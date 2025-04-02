@@ -16,6 +16,7 @@
         /* UI Panels */
         .ui-panel { position: absolute; left: 50%; transform: translateX(-50%); z-index: 10; background-color: rgba(30, 30, 30, 0.9); padding: 1.2rem 1rem; border-radius: 0.75rem; box-shadow: 0 4px 15px rgba(0, 255, 255, 0.2); border: 1px solid rgba(0, 255, 255, 0.5); text-align: center; pointer-events: auto; display: flex; flex-direction: column; align-items: center; width: 90%; max-width: 450px; }
         #setup-screen { top: 50%; transform: translate(-50%, -50%); }
+        /* Game UI panel is initially hidden and positioned at top for game over state */
         #game-ui { top: 0.75rem; padding: 0.6rem 0.8rem; max-width: 90%; width: auto; min-width: 260px; display: none; }
 
         /* UI Elements */
@@ -26,11 +27,11 @@
         select:focus, button:focus { outline: 2px solid #00ffff; outline-offset: 2px; }
         select { background-image: url('data:image/svg+xml;utf8,<svg fill="%2300ffff" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); background-repeat: no-repeat; background-position: right 0.7rem center; padding-right: 2.5rem; text-align: center; text-align-last: center; -moz-text-align-last: center; }
 
-        /* Message Area */
+        /* Message Area (within Game UI panel, only shown on game over) */
         #message-area { min-height: 35px; padding: 0.5rem 0.7rem; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.95rem; border-radius: 0.375rem; transition: all 0.3s; width: 100%; border: 1px solid transparent; display: flex; align-items: center; justify-content: center; box-sizing: border-box; line-height: 1.2; }
 
         /* Mute Button */
-        #mute-button { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 15; background-color: rgba(34, 34, 34, 0.8); color: #00ffff; border: 1px solid #00ffff; padding: 0.4rem; border-radius: 50%; font-size: 1rem; line-height: 1; cursor: pointer; transition: background-color 0.3s, box-shadow 0.3s, color 0.3s, border-color 0.3s; display: none; width: 36px; height: 36px; box-sizing: border-box; text-align: center; -webkit-appearance: none; -moz-appearance: none; appearance: none; display: flex; align-items: center; justify-content: center; }
+        #mute-button { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 15; background-color: rgba(34, 34, 34, 0.8); color: #00ffff; border: 1px solid #00ffff; padding: 0.4rem; border-radius: 50%; font-size: 1rem; line-height: 1; cursor: pointer; transition: background-color 0.3s, box-shadow 0.3s, color 0.3s, border-color 0.3s; display: none; /* Initially hidden, shown when game starts */ width: 36px; height: 36px; box-sizing: border-box; text-align: center; -webkit-appearance: none; -moz-appearance: none; appearance: none; display: flex; align-items: center; justify-content: center; }
         #mute-button.muted { color: #557777; border-color: #557777; background-color: rgba(34, 34, 34, 0.7); }
         @media (hover: hover) and (pointer: fine) { #mute-button:hover { background-color: #333; box-shadow: 0 0 8px #00ffff; } #mute-button.muted:hover { box-shadow: 0 0 8px #557777; border-color: #00ffff; color: #00ffff; } }
 
@@ -47,6 +48,7 @@
 </head>
 <body>
     <div id="game-container">
+        <!-- Setup Screen (visible initially) -->
         <div id="setup-screen" class="ui-panel">
             <h2>Game Setup</h2>
             <div class="setup-row">
@@ -64,34 +66,42 @@
             </div>
             <button id="start-game-button">Start Game</button>
         </div>
-        <div id="game-ui" class="ui-panel"> <div id="message-area"></div> <button id="restart-button" class="hidden">Play Again?</button> </div>
+
+        <!-- Game UI Panel (Only shown on Game Over) -->
+        <div id="game-ui" class="ui-panel">
+             <div id="message-area"></div> <!-- Message area for winner display -->
+             <button id="restart-button" class="hidden">Play Again?</button>
+        </div>
+
+        <!-- Canvas Container (Always visible) -->
         <div id="canvas-container"> <canvas id="game-canvas"></canvas> </div>
+
+        <!-- Mute Button (Shown during gameplay and game over) -->
         <button id="mute-button" title="Toggle Sound">🔊</button>
     </div>
 
     <script type="module">
         'use strict';
         // --- Constants ---
-        // Add labels for dropdown display
         const GRID_SIZES = {
             SMALL:           { rows: 5, cols: 6, label: "Small (5x6)" },
-            PORTRAIT_SMALL:  { rows: 6, cols: 5, label: "Portrait S (6x5)" }, // Mobile friendly
+            PORTRAIT_SMALL:  { rows: 8, cols: 5, label: "Portrait S (8x5)" },
             MEDIUM:          { rows: 6, cols: 8, label: "Medium (6x8)" },
-            PORTRAIT_MEDIUM: { rows: 8, cols: 6, label: "Portrait M (8x6)" }, // Mobile friendly
+            PORTRAIT_MEDIUM: { rows: 12, cols: 6, label: "Portrait M (12x6)" },
             LARGE:           { rows: 8, cols: 10, label: "Large (8x10)" }
         };
-        const MOBILE_BREAKPOINT = 768; // Pixels: screens smaller than this get portrait default
+        const MOBILE_BREAKPOINT = 768;
         const DEFAULT_GRID_SIZE_DESKTOP = "MEDIUM";
-        const DEFAULT_GRID_SIZE_MOBILE = "PORTRAIT_MEDIUM"; // Choose the default portrait size
+        const DEFAULT_GRID_SIZE_MOBILE = "PORTRAIT_MEDIUM";
 
-        const BASE_CELL_SIZE = 10; // Reference size
+        const BASE_CELL_SIZE = 10;
         const GRID_GAP_FACTOR = 0.1;
         const ORB_RADIUS_FACTOR = 0.15;
         const ORB_DETAIL = { segments: 12, rings: 10 };
         const PROJECTILE_RADIUS_FACTOR = 0.12;
         const PROJECTILE_DETAIL = { segments: 10, rings: 8 };
         const EXPLOSION_DELAY_MS = 100;
-        const EXPLOSION_SPEED_FACTOR = 7; // Speed relative to cell size
+        const EXPLOSION_SPEED_FACTOR = 7;
         const NEUTRAL_GRID_COLOR = 0x555555;
         const CAMERA_FOV = 50;
         const CAMERA_VIEW_PADDING = 1.1;
@@ -121,26 +131,35 @@
 
             constructor() {
                 if (!this.cacheDomElements()) { console.error("Essential DOM elements missing!"); return; }
-                this.populateGridSizeDropdown(); // Populate before showing
-                this.setDefaultGridSize();      // Set default based on screen size
-                this.showSetupScreen();
+                this.populateGridSizeDropdown();
+                this.setDefaultGridSize();
+                this.showSetupScreen(); // Initially show setup
                 this.setupEventListeners();
                 console.log("Chain Reaction Game Initialized (Mobile Friendly)");
             }
 
             cacheDomElements() {
                 this.dom = {
-                    setupScreen: document.getElementById('setup-screen'), gameUi: document.getElementById('game-ui'), playerCountSelect: document.getElementById('player-count'), gridSizeSelect: document.getElementById('grid-size'), startGameButton: document.getElementById('start-game-button'), messageArea: document.getElementById('message-area'), restartButton: document.getElementById('restart-button'), canvas: document.getElementById('game-canvas'), canvasContainer: document.getElementById('canvas-container'), gameContainer: document.getElementById('game-container'), muteButton: document.getElementById('mute-button')
+                    setupScreen: document.getElementById('setup-screen'),
+                    gameUi: document.getElementById('game-ui'), // The panel shown on game over
+                    playerCountSelect: document.getElementById('player-count'),
+                    gridSizeSelect: document.getElementById('grid-size'),
+                    startGameButton: document.getElementById('start-game-button'),
+                    messageArea: document.getElementById('message-area'), // Inside gameUi
+                    restartButton: document.getElementById('restart-button'), // Inside gameUi
+                    canvas: document.getElementById('game-canvas'),
+                    canvasContainer: document.getElementById('canvas-container'),
+                    gameContainer: document.getElementById('game-container'),
+                    muteButton: document.getElementById('mute-button')
                 };
-                // Check if critical elements exist, especially the grid size select
-                return !!(this.dom.canvas && this.dom.canvasContainer && this.dom.setupScreen && this.dom.gameUi && this.dom.muteButton && this.dom.gridSizeSelect);
+                // Ensure all critical elements are found
+                return Object.values(this.dom).every(el => el !== null);
             }
 
-            // --- Setup Helpers ---
             populateGridSizeDropdown() {
                 const selectElement = this.dom.gridSizeSelect;
                 if (!selectElement) return;
-                selectElement.innerHTML = ''; // Clear existing options if any
+                selectElement.innerHTML = '';
                 for (const key in GRID_SIZES) {
                     const option = document.createElement('option');
                     option.value = key;
@@ -154,57 +173,70 @@
                 if (!selectElement) return;
                 const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
                 const defaultKey = isMobile ? DEFAULT_GRID_SIZE_MOBILE : DEFAULT_GRID_SIZE_DESKTOP;
-
-                // Check if the default key exists in our GRID_SIZES
                 if (GRID_SIZES[defaultKey]) {
                     selectElement.value = defaultKey;
                     console.log(`Setting default grid size to: ${defaultKey} (Mobile: ${isMobile})`);
                 } else {
                     console.warn(`Default grid size key "${defaultKey}" not found. Using first option.`);
-                    selectElement.selectedIndex = 0; // Fallback to the first option
+                    selectElement.selectedIndex = 0;
                 }
             }
 
-            showSetupScreen() { this.dom.setupScreen.style.display = 'flex'; this.dom.gameUi.style.display = 'none'; this.dom.muteButton.style.display = 'none'; this.dom.restartButton.classList.add('hidden'); }
-            setupEventListeners() { this.dom.startGameButton.addEventListener('click', this.boundStartGame); this.dom.restartButton.addEventListener('click', this.boundResetGame); window.addEventListener('resize', this.boundOnWindowResize); this.dom.muteButton.addEventListener('click', this.boundToggleMute); }
+            showSetupScreen() {
+                this.dom.setupScreen.style.display = 'flex';
+                this.dom.gameUi.style.display = 'none'; // Hide game over UI
+                this.dom.muteButton.style.display = 'none'; // Hide mute button
+                if (this.dom.restartButton) this.dom.restartButton.classList.add('hidden');
+                if (this.dom.messageArea) this.dom.messageArea.textContent = '';
+            }
 
-            // --- Game Lifecycle ---
+            setupEventListeners() {
+                this.dom.startGameButton.addEventListener('click', this.boundStartGame);
+                this.dom.restartButton.addEventListener('click', this.boundResetGame);
+                window.addEventListener('resize', this.boundOnWindowResize);
+                this.dom.muteButton.addEventListener('click', this.boundToggleMute);
+            }
+
             startGame() {
                 this.initAudioContext();
                 this.numPlayers = parseInt(this.dom.playerCountSelect.value, 10);
-                const sizeKey = this.dom.gridSizeSelect.value;
-
-                // Ensure the selected key is valid
+                let sizeKey = this.dom.gridSizeSelect.value;
                 if (!GRID_SIZES[sizeKey]) {
-                    console.error(`Invalid grid size key selected: ${sizeKey}. Defaulting to first available.`);
-                    this.dom.gridSizeSelect.selectedIndex = 0; // Select first option
-                    sizeKey = this.dom.gridSizeSelect.value; // Read the new value
-                     if (!GRID_SIZES[sizeKey]) { // Still invalid? Serious issue.
-                         alert("Error: Could not determine grid size."); return;
-                     }
+                    console.error(`Invalid grid size key selected: ${sizeKey}. Defaulting.`);
+                    this.dom.gridSizeSelect.selectedIndex = 0;
+                    sizeKey = this.dom.gridSizeSelect.value;
+                     if (!GRID_SIZES[sizeKey]) { alert("Error: Could not determine grid size."); return; }
                 }
-
                 const size = GRID_SIZES[sizeKey];
                 this.rows = size.rows; this.cols = size.cols;
 
                 console.log(`Starting game: ${this.numPlayers}p, Grid ${sizeKey} (${this.rows}x${this.cols})`);
-                this.dom.setupScreen.style.display = 'none'; this.dom.gameUi.style.display = 'flex'; this.dom.muteButton.style.display = 'flex';
+                this.dom.setupScreen.style.display = 'none'; // Hide setup
+                this.dom.gameUi.style.display = 'none'; // << HIDE game UI panel during play
+                this.dom.muteButton.style.display = 'flex'; // << SHOW mute button
                 this.updateMuteButtonVisuals();
                 this.initializeGameInternals();
             }
 
-            resetGame() { console.log("Resetting game..."); this.cleanup(); this.showSetupScreen(); }
+            resetGame() {
+                console.log("Resetting game...");
+                this.cleanup();
+                this.showSetupScreen(); // Go back to setup screen
+            }
 
             initializeGameInternals() {
-                this.playerColors = NEON_COLORS.slice(0, this.numPlayers); this.playerColorsCSS = NEON_COLORS_CSS.slice(0, this.numPlayers);
-                this.orbGroups = {}; this.currentPlayer = 1; this.isExploding = false; this.turnCount = 0; this.gameOver = false;
+                this.playerColors = NEON_COLORS.slice(0, this.numPlayers);
+                this.playerColorsCSS = NEON_COLORS_CSS.slice(0, this.numPlayers);
+                this.orbGroups = {}; this.currentPlayer = 1; this.isExploding = false;
+                this.turnCount = 0; this.gameOver = false;
                 this.activePlayers = new Set(Array.from({ length: this.numPlayers }, (_, i) => i + 1));
                 this.initializeBoardState();
                 this.setupSceneAndRenderer();
-                this.updateGridAndCameraScale(); // Initial calc
-                this.setupGridVisuals();      // Initial draw
+                this.updateGridAndCameraScale();
+                this.setupGridVisuals();
                 this.renderBoard();
-                this.updateUI(); this.dom.restartButton.classList.add('hidden');
+                this.updateUI(); // Initial UI update (will hide #game-ui)
+                if (this.dom.restartButton) this.dom.restartButton.classList.add('hidden'); // Ensure hidden at start
                 this.dom.canvas.addEventListener('pointerdown', this.boundOnCanvasInteraction);
                 this.dom.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
                 this.animate();
@@ -223,12 +255,11 @@
                 this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
             }
 
-            // --- Dynamic Scaling & Positioning ---
             updateGridAndCameraScale() {
                 if (!this.renderer || !this.camera || !this.dom.canvasContainer) return;
                 const containerWidth = this.dom.canvasContainer.clientWidth; const containerHeight = this.dom.canvasContainer.clientHeight;
                 const gapFactor = GRID_GAP_FACTOR;
-                const availableWidth = containerWidth * 0.95; const availableHeight = containerHeight * 0.90;
+                const availableWidth = containerWidth * 0.95; const availableHeight = containerHeight * 0.95; // Use more height now
                 const totalWidthUnits = this.cols + (this.cols - 1) * gapFactor; const totalHeightUnits = this.rows + (this.rows - 1) * gapFactor;
                 const cellSizeBasedOnWidth = availableWidth / totalWidthUnits; const cellSizeBasedOnHeight = availableHeight / totalHeightUnits;
                 this.effectiveCellSize = Math.max(1, Math.min(cellSizeBasedOnWidth, cellSizeBasedOnHeight));
@@ -244,8 +275,7 @@
                 this.camera.position.set(gridCenterX, gridCenterY, cameraZ); this.camera.lookAt(gridCenterX, gridCenterY, 0);
                 this.camera.updateProjectionMatrix();
                 if (this.gridPlaneMesh) { this.updateGridPlaneGeometry(); }
-                if (this.gridGroup) { this.setupGridVisuals(true); } // Update lines
-                // console.log(`Grid Scale Update: CellSize=${this.effectiveCellSize.toFixed(2)}, GridVis=${this.gridTotalVisualWidth.toFixed(1)}x${this.gridTotalVisualHeight.toFixed(1)}, CamZ=${cameraZ.toFixed(1)}`);
+                if (this.gridGroup) { this.setupGridVisuals(true); }
             }
 
             updateGridPlaneGeometry() {
@@ -257,7 +287,6 @@
                  this.gridPlaneMesh.position.set(gridCenterX, gridCenterY, -0.01);
             }
 
-            // --- Grid Visuals ---
             setupGridVisuals(isUpdate = false) {
                 if (this.gridGroup && !isUpdate) { this.scene.remove(this.gridGroup); this.disposeObject(this.gridGroup); this.gridGroup = null; this.gridPlaneMesh = null; }
                 else if (this.gridGroup && isUpdate) { const linesToRemove = this.gridGroup.children.filter(child => child !== this.gridPlaneMesh); linesToRemove.forEach(line => { this.gridGroup.remove(line); this.disposeObject(line); }); }
@@ -271,7 +300,6 @@
                 for (let i = 0; i <= this.rows; i++) { const y = i * this.cellStep - (this.effectiveGapSize / 2); const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-this.effectiveGapSize/2, y, 0), new THREE.Vector3(maxX + this.effectiveGapSize/2, y, 0)]); this.gridGroup.add(new THREE.Line(geom, this.gridLineMaterial)); }
             }
 
-            // --- Audio ---
             initAudioContext() { if(this.audioContext)return;try{window.AudioContext=window.AudioContext||window.webkitAudioContext;if(window.AudioContext){this.audioContext=new AudioContext();if(this.audioContext.state==='suspended'){console.log("AudioContext suspended, will try resume on interaction.");}this.soundEnabled=true;console.log("AudioContext initialized.");}else{console.warn("Web Audio API not supported.");this.soundEnabled=false;}}catch(e){console.error("Error creating AudioContext:",e);this.soundEnabled=false;}}
             playSound(t,f,d,v=0.3){if(this.isMuted||!this.soundEnabled||!this.audioContext)return;if(this.audioContext.state==='suspended'){this.audioContext.resume().then(()=>{console.log("AudioContext resumed.");this._executeSound(t,f,d,v);}).catch(e=>console.warn("AudioContext resume failed:",e));return;}if(this.audioContext.state==='running'){this._executeSound(t,f,d,v);}}
             _executeSound(t,f,d,v){try{const o=this.audioContext.createOscillator();const g=this.audioContext.createGain();o.connect(g);g.connect(this.audioContext.destination);o.type=t;o.frequency.setValueAtTime(f,this.audioContext.currentTime);g.gain.setValueAtTime(0,this.audioContext.currentTime);g.gain.linearRampToValueAtTime(v,this.audioContext.currentTime+0.01);g.gain.linearRampToValueAtTime(0,this.audioContext.currentTime+d);o.start(this.audioContext.currentTime);o.stop(this.audioContext.currentTime+d);}catch(e){console.error("Error playing sound:",e);}}
@@ -280,7 +308,6 @@
             toggleMute(){this.isMuted=!this.isMuted;console.log("Muted:",this.isMuted);this.updateMuteButtonVisuals();if(!this.isMuted&&this.audioContext&&this.audioContext.state==='suspended'){console.log("Attempting resume AudioContext on unmute.");this.audioContext.resume().catch(e=>console.warn("Resume on unmute failed:",e));}}
             updateMuteButtonVisuals(){if(!this.dom.muteButton)return;this.dom.muteButton.textContent=this.isMuted?'🔇':'🔊';this.dom.muteButton.classList.toggle('muted',this.isMuted);this.dom.muteButton.setAttribute('title',this.isMuted?'Unmute Sound':'Mute Sound');}
 
-            // --- Game Logic & Rendering ---
             getCriticalMass=(r,c)=>{const iC=(r===0||r===this.rows-1)&&(c===0||c===this.cols-1);const iE=!iC&&(r===0||r===this.rows-1||c===0||c===this.cols-1);if(iC)return 2;if(iE)return 3;return 4;};
             getCellCenter(r,c){const x=c*this.cellStep+this.effectiveCellSize/2;const y=(this.rows-1-r)*this.cellStep+this.effectiveCellSize/2;return new THREE.Vector3(x,y,0);}
 
@@ -299,35 +326,357 @@
                     else if (cellState.count === 2) { positions.push(new THREE.Vector3(-offset, 0, radius*0.4)); positions.push(new THREE.Vector3(offset, 0, radius*0.6)); }
                     else { const a=Math.PI*2/3; positions.push(new THREE.Vector3(0, offset, radius*0.5)); positions.push(new THREE.Vector3(offset*Math.sin(a), offset*Math.cos(a), radius*0.4)); positions.push(new THREE.Vector3(offset*Math.sin(a*2), offset*Math.cos(a*2), radius*0.6)); }
                     for (let i = 0; i < Math.min(cellState.count, 3); i++) { const orbMesh = new THREE.Mesh(orbGeometry, material); orbMesh.position.copy(positions[i]); orbMesh.name = `Orb_${r}-${c}_${i}`; cellOrbGroup.add(orbMesh); }
-                    orbGeometry.dispose();
+                    orbGeometry.dispose(); // Dispose geometry after creating meshes
+                    // material is shared, dispose when cleaning up scene, not per cell
                 }
             }
 
             renderBoard() { if (!this.board || !this.gridGroup) return; for(let r=0; r<this.rows; r++) for(let c=0; c<this.cols; c++) this.renderCell(r,c); }
 
-            updateUI() { /* ... (UI update logic remains the same) ... */ if(!this.dom.messageArea||!this.gridLineMaterial)return;const m=this.dom.messageArea;const b=this.dom.restartButton;m.classList.remove('winner-message');m.style.cssText='';m.style.setProperty('--player-color-css','#ffffff');if(this.gameOver){this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);m.classList.add('winner-message');b.classList.remove('hidden');if(this.activePlayers.size===1){const w=[...this.activePlayers][0];const i=w-1;const c=this.playerColorsCSS[i]||'#ffffff';m.textContent=`Player ${w} Wins!`;m.style.backgroundColor=c;m.style.color='#000000';m.style.borderColor=c;m.style.setProperty('--player-color-css',c);b.style.backgroundColor=c;b.style.borderColor=c;b.style.color='#000000';b.style.boxShadow=`0 0 10px ${c}`;}else{m.textContent=`Game Over! Draw or Error.`;m.style.backgroundColor='#555';m.style.color='#fff';m.style.borderColor='#777';m.style.setProperty('--player-color-css','#777');b.style.backgroundColor='';b.style.borderColor='';b.style.color='';b.style.boxShadow='';}}else{const i=this.currentPlayer-1;if(i<0||i>=this.playerColors.length){console.error("Invalid player index:",i);this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);m.textContent="Error";m.style.backgroundColor='#ff0000';m.style.color='#ffffff';return;}const h=this.playerColors[i];const c=this.playerColorsCSS[i];this.gridLineMaterial.color.setHex(h);m.textContent=`Player ${this.currentPlayer}'s Turn`;const r=parseInt(c.slice(1),16);const R=(r>>16)&255;const G=(r>>8)&255;const B=r&255;m.style.backgroundColor=`rgba(${R},${G},${B},0.3)`;m.style.color=c;m.style.border=`1px solid ${c}`;m.style.boxShadow=`0 0 6px ${c}`;b.classList.add('hidden');b.style.backgroundColor='';b.style.borderColor='';b.style.color='';b.style.boxShadow='';}}
+            updateUI() {
+                if(!this.dom.messageArea || !this.gridLineMaterial || !this.dom.gameUi || !this.dom.restartButton) return;
+                const msgArea = this.dom.messageArea;
+                const restartBtn = this.dom.restartButton;
+                const gameUiPanel = this.dom.gameUi;
 
-            // --- Player Interaction ---
-            onCanvasInteraction(event) { /* ... (Interaction logic remains the same) ... */ if(this.isExploding||this.gameOver||!this.raycaster||!this.camera||!this.gridPlaneMesh||!event.isPrimary)return;event.preventDefault();const x=event.clientX;const y=event.clientY;const r=this.dom.canvas.getBoundingClientRect();this.mouse.x=((x-r.left)/r.width)*2-1;this.mouse.y=-((y-r.top)/r.height)*2+1;this.raycaster.setFromCamera(this.mouse,this.camera);const i=this.raycaster.intersectObject(this.gridPlaneMesh,false);if(i.length>0){const w=i[0].point;const l=this.gridGroup.worldToLocal(w.clone());const c=Math.floor(l.x/this.cellStep);const rv=Math.floor(l.y/this.cellStep);const R=this.rows-1-rv;if(R>=0&&R<this.rows&&c>=0&&c<this.cols){const C=this.board[R][c];if(C.owner===null||C.owner===this.currentPlayer){this.placeOrb(R,c);}else{console.log(`Cell (${R}, ${c}) owned by P${C.owner}.`);}}else{console.log(`Click outside grid (Local: ${l.x.toFixed(1)},${l.y.toFixed(1)} -> r:${R}, c:${c})`);}}}
+                msgArea.classList.remove('winner-message');
+                msgArea.style.cssText = ''; // Clear inline styles
+                msgArea.style.setProperty('--player-color-css','#ffffff');
+                msgArea.textContent = ''; // Clear text
 
-            placeOrb(r,c){if(this.isExploding||this.gameOver)return;console.log(`P${this.currentPlayer} places at (${r}, ${c})`);this.playSoundPlace();this.turnCount++;const l=this.board[r][c];l.owner=this.currentPlayer;l.count++;this.renderCell(r,c);const m=this.getCriticalMass(r,c);if(l.count>=m){console.log(`Cell (${r}, ${c}) critical.`);this.isExploding=true;this.explodeCell(r,c);}else{this.checkPlayerElimination();this.checkWinCondition();if(!this.gameOver)this.switchToNextPlayer();this.updateUI();}}
-            switchToNextPlayer(){if(this.activePlayers.size<=1){if(!this.gameOver){this.checkWinCondition();this.updateUI();}return;}let n=this.currentPlayer;let a=0;const m=this.numPlayers+1;do{n=(n%this.numPlayers)+1;a++;if(a>m){console.error("Infinite loop in switchToNextPlayer!");this.gameOver=true;return;}}while(!this.activePlayers.has(n));this.currentPlayer=n;console.log(`Switched to P${this.currentPlayer}`);}
+                if(this.gameOver) {
+                    gameUiPanel.style.display = 'flex'; // << SHOW game UI panel on game over
+                    this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);
+                    msgArea.classList.add('winner-message');
+                    restartBtn.classList.remove('hidden');
 
-            // --- Explosion Logic ---
-            async explodeCell(r_initial, c_initial) { /* ... (Explosion logic remains the same) ... */ let q=[{r:r_initial,c:c_initial}];const g=new THREE.SphereGeometry(this.effectiveCellSize*PROJECTILE_RADIUS_FACTOR,PROJECTILE_DETAIL.segments,PROJECTILE_DETAIL.rings);const s=EXPLOSION_SPEED_FACTOR*this.effectiveCellSize;while(q.length>0){const t=[];const n=[];const p=new Set();for(const{r,c}of q){const l=this.board[r]?.[c];if(!l||l.count<this.getCriticalMass(r,c)||l.owner===null)continue;this.playSoundExplode();const E=l.owner;const S=this.getCellCenter(r,c);const I=E-1;if(I<0||I>=this.playerColors.length)continue;const C=this.playerColors[I];const M=new THREE.MeshLambertMaterial({color:C,emissive:C,emissiveIntensity:0.6});const k=`${r}-${c}`;if(this.orbGroups[k]){this.gridGroup.remove(this.orbGroups[k]);this.disposeObject(this.orbGroups[k]);delete this.orbGroups[k];}l.count=0;l.owner=null;const N=[{dr:-1,dc:0},{dr:1,dc:0},{dr:0,dc:-1},{dr:0,dc:1}];for(const{dr,dc}of N){const nr=r+dr;const nc=c+dc;if(nr>=0&&nr<this.rows&&nc>=0&&nc<this.cols){const L=this.board[nr][nc];const O=this.getCellCenter(nr,nc);const P=new THREE.Mesh(g,M.clone());P.position.copy(S);P.name=`Projectile_${r}-${c}_to_${nr}-${nc}`;this.gridGroup.add(P);const D=S.distanceTo(O);const U=D/s;const A=this.animateProjectile(P,O,U).then(()=>{if(P.parent)P.parent.remove(P);this.disposeObject(P);L.owner=E;L.count++;this.renderCell(nr,nc);const K=`${nr}-${nc}`;if(L.count>=this.getCriticalMass(nr,nc)&&!p.has(K)){n.push({r:nr,c:nc});p.add(K);}}).catch(e=>{console.error("Proj anim failed:",e);if(P.parent)P.parent.remove(P);this.disposeObject(P);});t.push(A);}}M.dispose();}if(t.length>0)await Promise.all(t);if(n.length>0)await new Promise(e=>setTimeout(e,EXPLOSION_DELAY_MS));q=n;}g.dispose();this.isExploding=false;console.log("Explosion finished.");this.checkPlayerElimination();this.checkWinCondition();if(!this.gameOver&&!this.activePlayers.has(this.currentPlayer)){console.log(`Player ${this.currentPlayer} eliminated, switching.`);this.switchToNextPlayer();}this.updateUI();}
-            animateProjectile(m,t,d){return new Promise((s,f)=>{if(!m||!t||d<=0)return f(new Error("Invalid proj params"));const p=m.position.clone();let e=null;const c=a=>{if(!m||!m.parent)return s();if(!e)e=a;const n=(a-e)/1000;const o=Math.min(n/d,1.0);m.position.lerpVectors(p,t,o);if(o<1)requestAnimationFrame(c);else s();};requestAnimationFrame(c);});}
+                    if(this.activePlayers.size === 1) {
+                        const winner = [...this.activePlayers][0];
+                        const winnerIndex = winner - 1;
+                        const winnerColorCSS = this.playerColorsCSS[winnerIndex] || '#ffffff';
+                        msgArea.textContent = `Player ${winner} Wins!`;
+                        msgArea.style.backgroundColor = winnerColorCSS;
+                        msgArea.style.color = '#000000';
+                        msgArea.style.borderColor = winnerColorCSS;
+                        msgArea.style.setProperty('--player-color-css', winnerColorCSS);
+                        restartBtn.style.backgroundColor = winnerColorCSS;
+                        restartBtn.style.borderColor = winnerColorCSS;
+                        restartBtn.style.color = '#000000';
+                        restartBtn.style.boxShadow = `0 0 10px ${winnerColorCSS}`;
+                    } else {
+                        msgArea.textContent = `Game Over! Draw or Error.`;
+                        msgArea.style.backgroundColor = '#555';
+                        msgArea.style.color = '#fff';
+                        msgArea.style.borderColor = '#777';
+                        msgArea.style.setProperty('--player-color-css', '#777');
+                        restartBtn.style.backgroundColor = ''; restartBtn.style.borderColor = ''; restartBtn.style.color = ''; restartBtn.style.boxShadow = '';
+                    }
+                } else {
+                    gameUiPanel.style.display = 'none'; // << HIDE game UI panel during active play
+                    const playerIndex = this.currentPlayer - 1;
+                    if(playerIndex < 0 || playerIndex >= this.playerColors.length) {
+                        console.error("Invalid player index:", playerIndex);
+                        this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);
+                        return;
+                    }
+                    const playerColorHex = this.playerColors[playerIndex];
+                    this.gridLineMaterial.color.setHex(playerColorHex); // Update grid line color only
+                    restartBtn.classList.add('hidden'); // Ensure restart button is hidden
+                }
+            }
 
-            // --- Game State Checks ---
-            checkPlayerElimination(){if(this.turnCount<this.numPlayers)return;const p=new Set();for(let r=0;r<this.rows;r++)for(let c=0;c<this.cols;c++)if(this.board[r][c].owner!==null)p.add(this.board[r][c].owner);const t=[];for(const n of this.activePlayers)if(!p.has(n))t.push(n);if(t.length>0)t.forEach(e=>{this.activePlayers.delete(e);console.log(`Player ${e} eliminated.`);});}
-            checkWinCondition(){if(this.gameOver||this.turnCount<this.numPlayers)return;if(this.activePlayers.size===1){this.gameOver=true;console.log(`Game Over: P${[...this.activePlayers][0]} wins!`);}else if(this.activePlayers.size===0){this.gameOver=true;console.log("Game Over: Draw!");}}
+            onCanvasInteraction(event) {
+                if(this.isExploding || this.gameOver || !this.raycaster || !this.camera || !this.gridPlaneMesh || !event.isPrimary) return;
+                event.preventDefault();
+                const x = event.clientX; const y = event.clientY;
+                const rect = this.dom.canvas.getBoundingClientRect();
+                this.mouse.x = ( (x - rect.left) / rect.width ) * 2 - 1;
+                this.mouse.y = - ( (y - rect.top) / rect.height ) * 2 + 1;
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const intersects = this.raycaster.intersectObject(this.gridPlaneMesh, false);
+                if(intersects.length > 0) {
+                    const worldPoint = intersects[0].point;
+                    const localPoint = this.gridGroup.worldToLocal(worldPoint.clone());
+                    const col = Math.floor(localPoint.x / this.cellStep);
+                    const row_visual = Math.floor(localPoint.y / this.cellStep);
+                    const row = this.rows - 1 - row_visual;
 
-            // --- Animation Loop & Resize ---
-            animate(){this.animationFrameId=requestAnimationFrame(this.animate.bind(this));if(this.renderer&&this.scene&&this.camera)this.renderer.render(this.scene,this.camera);}
-            onWindowResize(){console.log("Window resize detected.");this.updateGridAndCameraScale();this.renderBoard();}
+                    if(row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
+                        const cellState = this.board[row][col];
+                        if(cellState.owner === null || cellState.owner === this.currentPlayer) {
+                            this.placeOrb(row, col); // Async function handles the rest
+                        } else {
+                            console.log(`Cell (${row}, ${col}) owned by P${cellState.owner}.`);
+                        }
+                    } else {
+                        console.log(`Click outside grid (Local: ${localPoint.x.toFixed(1)},${localPoint.y.toFixed(1)} -> r:${row}, c:${col})`);
+                    }
+                }
+            }
 
-            // --- Cleanup ---
-            cleanup() { /* ... (Cleanup logic remains the same) ... */ console.log("Cleaning up game resources...");if(this.animationFrameId)cancelAnimationFrame(this.animationFrameId);this.animationFrameId=null;this.dom.canvas.removeEventListener('pointerdown',this.boundOnCanvasInteraction);this.dom.canvas.removeEventListener('contextmenu',(e)=>e.preventDefault());if(this.audioContext&&this.audioContext.state!=='closed'){this.audioContext.close().then(()=>console.log("AudioContext closed.")).catch(e=>console.error("Err closing AudioContext:",e));}this.audioContext=null;this.soundEnabled=false;if(this.scene){if(this.gridLineMaterial)this.gridLineMaterial.dispose();while(this.scene.children.length>0){const o=this.scene.children[0];this.scene.remove(o);this.disposeObject(o);}}if(this.renderer){this.renderer.dispose();this.renderer.domElement=null;}this.scene=null;this.camera=null;this.renderer=null;this.raycaster=null;this.mouse=null;this.gridGroup=null;this.gridLineMaterial=null;this.gridPlaneMesh=null;this.orbGroups={};this.board=[];this.activePlayers.clear();this.ambientLight=null;this.directionalLight=null;console.log("Cleanup complete.");}
-            disposeObject(o){if(!o)return;if(o.children&&o.children.length>0){[...o.children].forEach(c=>{this.disposeObject(c);if(o.remove)o.remove(c);});}if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m&&m.dispose());else o.material.dispose();}if(o.texture)o.texture.dispose();}
+            async placeOrb(r, c) {
+                if (this.isExploding || this.gameOver) return;
+
+                console.log(`P${this.currentPlayer} places at (${r}, ${c})`);
+                this.playSoundPlace();
+                this.turnCount++;
+
+                const cellState = this.board[r][c];
+                cellState.owner = this.currentPlayer;
+                cellState.count++;
+                this.renderCell(r, c); // Render immediately
+
+                const criticalMass = this.getCriticalMass(r, c);
+
+                if (cellState.count >= criticalMass) {
+                    console.log(`Cell (${r}, ${c}) critical. Starting explosion.`);
+                    this.isExploding = true; // Lock input
+                    await this.explodeCell(r, c); // Wait for explosion chain
+                    // Explosion finished, now check state and switch turn
+                    this.checkPlayerElimination();
+                    this.checkWinCondition();
+                    if (!this.gameOver) {
+                        this.switchToNextPlayer();
+                    }
+                } else {
+                    // No explosion, check state and switch turn
+                    this.checkPlayerElimination();
+                    this.checkWinCondition();
+                     if (!this.gameOver) {
+                        this.switchToNextPlayer();
+                    }
+                }
+                // Update UI AFTER turn potentially switched and game state checked
+                this.updateUI();
+            }
+
+            switchToNextPlayer() {
+                if (this.activePlayers.size <= 1) {
+                    if (!this.gameOver) this.checkWinCondition();
+                    return;
+                }
+                let nextPlayer = this.currentPlayer;
+                let attempts = 0;
+                const maxAttempts = this.numPlayers + 1;
+                do {
+                    nextPlayer = (nextPlayer % this.numPlayers) + 1;
+                    attempts++;
+                    if (attempts > maxAttempts) {
+                        console.error("Infinite loop detected in switchToNextPlayer! Ending game.");
+                        this.gameOver = true; return;
+                    }
+                } while (!this.activePlayers.has(nextPlayer));
+                this.currentPlayer = nextPlayer;
+                console.log(`Switched to P${this.currentPlayer}`);
+                // UI update (grid color change) happens in updateUI called by placeOrb
+            }
+
+            async explodeCell(r_initial, c_initial) {
+                let explosionQueue = [{ r: r_initial, c: c_initial }];
+                // Create geometry once, material per explosion source
+                const projectileGeometry = new THREE.SphereGeometry(this.effectiveCellSize * PROJECTILE_RADIUS_FACTOR, PROJECTILE_DETAIL.segments, PROJECTILE_DETAIL.rings);
+                const explosionSpeed = EXPLOSION_SPEED_FACTOR * this.effectiveCellSize;
+
+                while (explosionQueue.length > 0) {
+                    const currentLevelExplosions = [];
+                    const nextLevelQueue = [];
+                    const cellsTriggeredThisLevel = new Set(); // Prevent multi-trigger in same wave
+
+                    for (const { r, c } of explosionQueue) {
+                        const cellState = this.board[r]?.[c];
+                        if (!cellState || cellState.count < this.getCriticalMass(r, c) || cellState.owner === null) continue;
+
+                        this.playSoundExplode();
+                        const explodingPlayer = cellState.owner;
+                        const startPos = this.getCellCenter(r, c);
+                        const playerIndex = explodingPlayer - 1;
+                        if (playerIndex < 0 || playerIndex >= this.playerColors.length) continue;
+
+                        const color = this.playerColors[playerIndex];
+                        // Create material for this specific explosion source (will be cloned for projectiles)
+                        const material = new THREE.MeshLambertMaterial({ color: color, emissive: color, emissiveIntensity: 0.6 });
+
+                        const cellKey = `${r}-${c}`;
+                        if (this.orbGroups[cellKey]) {
+                            this.gridGroup.remove(this.orbGroups[cellKey]);
+                            this.disposeObject(this.orbGroups[cellKey]);
+                            delete this.orbGroups[cellKey];
+                        }
+                        cellState.count = 0; cellState.owner = null; // Clear cell state
+
+                        const neighbors = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
+                        for (const { dr, dc } of neighbors) {
+                            const nr = r + dr; const nc = c + dc;
+                            if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols) {
+                                const neighborState = this.board[nr][nc];
+                                const endPos = this.getCellCenter(nr, nc);
+                                // Use shared geometry, clone material
+                                const projectile = new THREE.Mesh(projectileGeometry, material.clone());
+                                projectile.position.copy(startPos);
+                                projectile.name = `Projectile_${r}-${c}_to_${nr}-${nc}`;
+                                this.gridGroup.add(projectile);
+
+                                const distance = startPos.distanceTo(endPos);
+                                const duration = distance / explosionSpeed;
+
+                                const animationPromise = this.animateProjectile(projectile, endPos, duration)
+                                    .then(() => {
+                                        if (projectile.parent) projectile.parent.remove(projectile);
+                                        this.disposeObject(projectile); // Dispose projectile mesh/material clone
+
+                                        neighborState.owner = explodingPlayer;
+                                        neighborState.count++;
+                                        this.renderCell(nr, nc); // Update captured cell visuals
+
+                                        const neighborKey = `${nr}-${nc}`;
+                                        if (neighborState.count >= this.getCriticalMass(nr, nc) && !cellsTriggeredThisLevel.has(neighborKey)) {
+                                            nextLevelQueue.push({ r: nr, c: nc });
+                                            cellsTriggeredThisLevel.add(neighborKey);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error("Projectile animation failed:", error);
+                                        if (projectile.parent) projectile.parent.remove(projectile);
+                                        this.disposeObject(projectile);
+                                    });
+                                currentLevelExplosions.push(animationPromise);
+                            }
+                        }
+                        material.dispose(); // Dispose the source material for this explosion
+                    } // End for loop
+
+                    if (currentLevelExplosions.length > 0) await Promise.all(currentLevelExplosions);
+                    if (nextLevelQueue.length > 0) await new Promise(resolve => setTimeout(resolve, EXPLOSION_DELAY_MS));
+                    explosionQueue = nextLevelQueue;
+                } // End while loop
+
+                projectileGeometry.dispose(); // Dispose shared geometry after all explosions
+                this.isExploding = false; // Re-enable input
+                console.log("Explosion sequence finished.");
+            }
+
+            animateProjectile(mesh, targetPos, duration) {
+                 return new Promise((resolve, reject) => {
+                    if (!mesh || !targetPos || duration <= 0) return reject(new Error("Invalid projectile animation parameters"));
+                    const startPos = mesh.position.clone();
+                    let startTime = null;
+                    const animate = (time) => {
+                        if (!mesh || !mesh.parent) return resolve(); // Stop if mesh removed early
+                        if (!startTime) startTime = time;
+                        const elapsedTime = (time - startTime) / 1000;
+                        const progress = Math.min(elapsedTime / duration, 1.0);
+                        mesh.position.lerpVectors(startPos, targetPos, progress);
+                        if (progress < 1) {
+                            requestAnimationFrame(animate);
+                        } else {
+                            resolve();
+                        }
+                    };
+                    requestAnimationFrame(animate);
+                });
+            }
+
+            checkPlayerElimination() {
+                if (this.turnCount < this.numPlayers) return;
+                const presentPlayers = new Set();
+                for (let r = 0; r < this.rows; r++) {
+                    for (let c = 0; c < this.cols; c++) {
+                        if (this.board[r][c].owner !== null) presentPlayers.add(this.board[r][c].owner);
+                    }
+                }
+                const eliminated = [];
+                for (const player of this.activePlayers) if (!presentPlayers.has(player)) eliminated.push(player);
+                if (eliminated.length > 0) {
+                    eliminated.forEach(player => {
+                        this.activePlayers.delete(player);
+                        console.log(`Player ${player} eliminated.`);
+                    });
+                }
+            }
+
+            checkWinCondition() {
+                if (this.gameOver || this.turnCount < this.numPlayers) return;
+                if (this.activePlayers.size === 1) {
+                    this.gameOver = true;
+                    console.log(`Game Over: Player ${[...this.activePlayers][0]} wins!`);
+                } else if (this.activePlayers.size === 0) {
+                    this.gameOver = true;
+                    console.log("Game Over: Draw! (No active players left)");
+                }
+                // UI update showing game over state is handled in updateUI called by placeOrb
+            }
+
+            animate() { this.animationFrameId = requestAnimationFrame(this.animate.bind(this)); if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera); }
+            onWindowResize() { console.log("Window resize detected."); this.updateGridAndCameraScale(); this.renderBoard(); }
+
+            cleanup() {
+                console.log("Cleaning up game resources...");
+                if(this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+                this.dom.canvas.removeEventListener('pointerdown', this.boundOnCanvasInteraction);
+                this.dom.canvas.removeEventListener('contextmenu',(e)=>e.preventDefault());
+
+                if(this.audioContext && this.audioContext.state !== 'closed') {
+                    this.audioContext.close().then(() => console.log("AudioContext closed.")).catch(e => console.error("Error closing AudioContext:", e));
+                }
+                this.audioContext = null; this.soundEnabled = false;
+
+                if (this.scene) {
+                    if (this.gridLineMaterial) this.gridLineMaterial.dispose();
+                    while(this.scene.children.length > 0){
+                        const object = this.scene.children[0];
+                        this.scene.remove(object);
+                        this.disposeObject(object); // Dispose geometry/material recursively
+                    }
+                }
+                 if (this.renderer) {
+                    this.renderer.dispose(); this.renderer.domElement = null;
+                }
+
+                this.scene = null; this.camera = null; this.renderer = null; this.raycaster = null; this.mouse = null;
+                this.gridGroup = null; this.gridLineMaterial = null; this.gridPlaneMesh = null; this.orbGroups = {};
+                this.board = []; this.activePlayers.clear();
+                this.ambientLight = null; this.directionalLight = null;
+                console.log("Cleanup complete.");
+            }
+
+             disposeObject(obj) {
+                if (!obj) return;
+                if (obj.children && obj.children.length > 0) {
+                    [...obj.children].forEach(child => {
+                        this.disposeObject(child);
+                         // Don't necessarily remove from parent here, let the top-level removal handle hierarchy
+                    });
+                }
+                 // Dispose geometry if it exists and belongs to this object
+                if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+                    obj.geometry.dispose();
+                }
+                 // Dispose material(s) if they exist and belong to this object
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach(material => {
+                             if (material && typeof material.dispose === 'function') material.dispose();
+                             // Dispose textures associated with the material
+                             if (material && material.map && typeof material.map.dispose === 'function') material.map.dispose();
+                             if (material && material.emissiveMap && typeof material.emissiveMap.dispose === 'function') material.emissiveMap.dispose();
+                             // Add other map types if used (normalMap, bumpMap, etc.)
+                         });
+                    } else {
+                         if (typeof obj.material.dispose === 'function') obj.material.dispose();
+                         if (obj.material.map && typeof obj.material.map.dispose === 'function') obj.material.map.dispose();
+                         if (obj.material.emissiveMap && typeof obj.material.emissiveMap.dispose === 'function') obj.material.emissiveMap.dispose();
+                    }
+                }
+                 // Dispose textures directly attached to the object (less common)
+                if (obj.texture && typeof obj.texture.dispose === 'function') {
+                    obj.texture.dispose();
+                }
+                 // Remove from parent if applicable (safer done at higher level during scene cleanup)
+                 // if (obj.parent) {
+                 //     obj.parent.remove(obj);
+                 // }
+            }
 
         } // End ChainReactionGame Class
 
