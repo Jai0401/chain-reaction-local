@@ -473,11 +473,18 @@
 
             async explodeCell(r_initial, c_initial) {
                 let explosionQueue = [{ r: r_initial, c: c_initial }];
-                // Create geometry once, material per explosion source
                 const projectileGeometry = new THREE.SphereGeometry(this.effectiveCellSize * PROJECTILE_RADIUS_FACTOR, PROJECTILE_DETAIL.segments, PROJECTILE_DETAIL.rings);
                 const explosionSpeed = EXPLOSION_SPEED_FACTOR * this.effectiveCellSize;
+                const explosionStartTime = Date.now(); // Start explosion timer
 
                 while (explosionQueue.length > 0) {
+                    // Exit if continuous explosions exceed 5 seconds
+                    if (Date.now() - explosionStartTime >= 5000) {
+                        console.log("Explosion chain exceeded 5 seconds. Exiting game.");
+                        this.gameOver = true;
+                        break; // Exit explosion loop
+                    }
+                    
                     const currentLevelExplosions = [];
                     const nextLevelQueue = [];
                     const cellsTriggeredThisLevel = new Set(); // Prevent multi-trigger in same wave
@@ -506,7 +513,8 @@
 
                         const neighbors = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
                         for (const { dr, dc } of neighbors) {
-                            const nr = r + dr; const nc = c + dc;
+                            const nr = r + dr; 
+                            const nc = c + dc;
                             if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols) {
                                 const neighborState = this.board[nr][nc];
                                 const endPos = this.getCellCenter(nr, nc);
