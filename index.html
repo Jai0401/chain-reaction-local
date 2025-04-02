@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Chain Reaction 3D (Responsive V2)</title>
+    <title>Chain Reaction 3D (Mobile Friendly)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
@@ -49,8 +49,19 @@
     <div id="game-container">
         <div id="setup-screen" class="ui-panel">
             <h2>Game Setup</h2>
-            <div class="setup-row"> <label for="player-count">Players:</label> <select id="player-count"> <option value="2">2</option> <option value="3">3</option> <option value="4">4</option> <option value="5">5</option> <option value="6">6</option> <option value="7">7</option> <option value="8">8</option> </select> </div>
-            <div class="setup-row"> <label for="grid-size">Grid Size:</label> <select id="grid-size"> <option value="SMALL">Small (5x6)</option> <option value="MEDIUM" selected>Medium (6x8)</option> <option value="LARGE">Large (8x10)</option> </select> </div>
+            <div class="setup-row">
+                <label for="player-count">Players:</label>
+                <select id="player-count">
+                    <option value="2">2</option> <option value="3">3</option> <option value="4">4</option>
+                    <option value="5">5</option> <option value="6">6</option> <option value="7">7</option> <option value="8">8</option>
+                </select>
+            </div>
+            <div class="setup-row">
+                <label for="grid-size">Grid Size:</label>
+                <select id="grid-size">
+                    <!-- Options will be populated by JavaScript -->
+                </select>
+            </div>
             <button id="start-game-button">Start Game</button>
         </div>
         <div id="game-ui" class="ui-panel"> <div id="message-area"></div> <button id="restart-button" class="hidden">Play Again?</button> </div>
@@ -60,38 +71,47 @@
 
     <script type="module">
         'use strict';
-
         // --- Constants ---
-        const GRID_SIZES = { SMALL: { rows: 5, cols: 6 }, MEDIUM: { rows: 6, cols: 8 }, LARGE: { rows: 8, cols: 10 } };
-        const BASE_CELL_SIZE = 10; // Reference size, used for relative calculations if needed
-        const GRID_GAP_FACTOR = 0.1; // Gap size = GRID_GAP_FACTOR * effectiveCellSize
-        const ORB_RADIUS_FACTOR = 0.15; // Orb radius = ORB_RADIUS_FACTOR * effectiveCellSize
+        // Add labels for dropdown display
+        const GRID_SIZES = {
+            SMALL:           { rows: 5, cols: 6, label: "Small (5x6)" },
+            PORTRAIT_SMALL:  { rows: 6, cols: 5, label: "Portrait S (6x5)" }, // Mobile friendly
+            MEDIUM:          { rows: 6, cols: 8, label: "Medium (6x8)" },
+            PORTRAIT_MEDIUM: { rows: 8, cols: 6, label: "Portrait M (8x6)" }, // Mobile friendly
+            LARGE:           { rows: 8, cols: 10, label: "Large (8x10)" }
+        };
+        const MOBILE_BREAKPOINT = 768; // Pixels: screens smaller than this get portrait default
+        const DEFAULT_GRID_SIZE_DESKTOP = "MEDIUM";
+        const DEFAULT_GRID_SIZE_MOBILE = "PORTRAIT_MEDIUM"; // Choose the default portrait size
+
+        const BASE_CELL_SIZE = 10; // Reference size
+        const GRID_GAP_FACTOR = 0.1;
+        const ORB_RADIUS_FACTOR = 0.15;
         const ORB_DETAIL = { segments: 12, rings: 10 };
         const PROJECTILE_RADIUS_FACTOR = 0.12;
         const PROJECTILE_DETAIL = { segments: 10, rings: 8 };
         const EXPLOSION_DELAY_MS = 100;
-        const EXPLOSION_SPEED_FACTOR = 7; // Speed = EXPLOSION_SPEED_FACTOR * effectiveCellSize / sec
+        const EXPLOSION_SPEED_FACTOR = 7; // Speed relative to cell size
         const NEUTRAL_GRID_COLOR = 0x555555;
-        const CAMERA_FOV = 50; // Vertical FOV in degrees
-        const CAMERA_VIEW_PADDING = 1.1; // Multiplier: view will be 110% of grid size
+        const CAMERA_FOV = 50;
+        const CAMERA_VIEW_PADDING = 1.1;
         const NEON_COLORS = [ 0x00ff00, 0x0088ff, 0xff0000, 0xffff00, 0x00ffff, 0xff00ff, 0xff8800, 0xffaaaa ];
         const NEON_COLORS_CSS = [ '#00ff00', '#0088ff', '#ff0000', '#ffff00', '#00ffff', '#ff00ff', '#ff8800', '#ffaaaa' ];
 
         class ChainReactionGame {
-            dom = {}; // Populated in constructor
+            dom = {};
             scene = null; camera = null; renderer = null; raycaster = null; mouse = null;
-            gridGroup = null; gridLineMaterial = null; gridPlaneMesh = null; // Renamed gridMeshGroup -> gridGroup
-            orbGroups = {}; // Stores THREE.Group per cell key 'r-c'
+            gridGroup = null; gridLineMaterial = null; gridPlaneMesh = null;
+            orbGroups = {};
             ambientLight = null; directionalLight = null;
             rows = 0; cols = 0; board = []; numPlayers = 2;
             playerColors = []; playerColorsCSS = []; currentPlayer = 1;
             isExploding = false; turnCount = 0; gameOver = false;
             activePlayers = new Set(); animationFrameId = null;
-            effectiveCellSize = BASE_CELL_SIZE; // Will be calculated dynamically
+            effectiveCellSize = BASE_CELL_SIZE;
             effectiveGapSize = BASE_CELL_SIZE * GRID_GAP_FACTOR;
-            cellStep = BASE_CELL_SIZE * (1 + GRID_GAP_FACTOR); // Distance between cell centers
-            gridTotalVisualWidth = 0; // Actual width on screen
-            gridTotalVisualHeight = 0; // Actual height on screen
+            cellStep = BASE_CELL_SIZE * (1 + GRID_GAP_FACTOR);
+            gridTotalVisualWidth = 0; gridTotalVisualHeight = 0;
             audioContext = null; soundEnabled = false; isMuted = false;
             boundOnCanvasInteraction = this.onCanvasInteraction.bind(this);
             boundOnWindowResize = this.onWindowResize.bind(this);
@@ -101,27 +121,72 @@
 
             constructor() {
                 if (!this.cacheDomElements()) { console.error("Essential DOM elements missing!"); return; }
+                this.populateGridSizeDropdown(); // Populate before showing
+                this.setDefaultGridSize();      // Set default based on screen size
                 this.showSetupScreen();
                 this.setupEventListeners();
-                console.log("Chain Reaction Game Initialized (Responsive V2)");
+                console.log("Chain Reaction Game Initialized (Mobile Friendly)");
             }
 
             cacheDomElements() {
                 this.dom = {
                     setupScreen: document.getElementById('setup-screen'), gameUi: document.getElementById('game-ui'), playerCountSelect: document.getElementById('player-count'), gridSizeSelect: document.getElementById('grid-size'), startGameButton: document.getElementById('start-game-button'), messageArea: document.getElementById('message-area'), restartButton: document.getElementById('restart-button'), canvas: document.getElementById('game-canvas'), canvasContainer: document.getElementById('canvas-container'), gameContainer: document.getElementById('game-container'), muteButton: document.getElementById('mute-button')
                 };
-                return !!(this.dom.canvas && this.dom.canvasContainer && this.dom.setupScreen && this.dom.gameUi && this.dom.muteButton);
+                // Check if critical elements exist, especially the grid size select
+                return !!(this.dom.canvas && this.dom.canvasContainer && this.dom.setupScreen && this.dom.gameUi && this.dom.muteButton && this.dom.gridSizeSelect);
             }
 
-            // --- Setup & Teardown ---
+            // --- Setup Helpers ---
+            populateGridSizeDropdown() {
+                const selectElement = this.dom.gridSizeSelect;
+                if (!selectElement) return;
+                selectElement.innerHTML = ''; // Clear existing options if any
+                for (const key in GRID_SIZES) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = GRID_SIZES[key].label;
+                    selectElement.appendChild(option);
+                }
+            }
+
+            setDefaultGridSize() {
+                const selectElement = this.dom.gridSizeSelect;
+                if (!selectElement) return;
+                const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+                const defaultKey = isMobile ? DEFAULT_GRID_SIZE_MOBILE : DEFAULT_GRID_SIZE_DESKTOP;
+
+                // Check if the default key exists in our GRID_SIZES
+                if (GRID_SIZES[defaultKey]) {
+                    selectElement.value = defaultKey;
+                    console.log(`Setting default grid size to: ${defaultKey} (Mobile: ${isMobile})`);
+                } else {
+                    console.warn(`Default grid size key "${defaultKey}" not found. Using first option.`);
+                    selectElement.selectedIndex = 0; // Fallback to the first option
+                }
+            }
+
             showSetupScreen() { this.dom.setupScreen.style.display = 'flex'; this.dom.gameUi.style.display = 'none'; this.dom.muteButton.style.display = 'none'; this.dom.restartButton.classList.add('hidden'); }
             setupEventListeners() { this.dom.startGameButton.addEventListener('click', this.boundStartGame); this.dom.restartButton.addEventListener('click', this.boundResetGame); window.addEventListener('resize', this.boundOnWindowResize); this.dom.muteButton.addEventListener('click', this.boundToggleMute); }
 
+            // --- Game Lifecycle ---
             startGame() {
                 this.initAudioContext();
                 this.numPlayers = parseInt(this.dom.playerCountSelect.value, 10);
                 const sizeKey = this.dom.gridSizeSelect.value;
-                const size = GRID_SIZES[sizeKey]; this.rows = size.rows; this.cols = size.cols;
+
+                // Ensure the selected key is valid
+                if (!GRID_SIZES[sizeKey]) {
+                    console.error(`Invalid grid size key selected: ${sizeKey}. Defaulting to first available.`);
+                    this.dom.gridSizeSelect.selectedIndex = 0; // Select first option
+                    sizeKey = this.dom.gridSizeSelect.value; // Read the new value
+                     if (!GRID_SIZES[sizeKey]) { // Still invalid? Serious issue.
+                         alert("Error: Could not determine grid size."); return;
+                     }
+                }
+
+                const size = GRID_SIZES[sizeKey];
+                this.rows = size.rows; this.cols = size.cols;
+
                 console.log(`Starting game: ${this.numPlayers}p, Grid ${sizeKey} (${this.rows}x${this.cols})`);
                 this.dom.setupScreen.style.display = 'none'; this.dom.gameUi.style.display = 'flex'; this.dom.muteButton.style.display = 'flex';
                 this.updateMuteButtonVisuals();
@@ -135,10 +200,10 @@
                 this.orbGroups = {}; this.currentPlayer = 1; this.isExploding = false; this.turnCount = 0; this.gameOver = false;
                 this.activePlayers = new Set(Array.from({ length: this.numPlayers }, (_, i) => i + 1));
                 this.initializeBoardState();
-                this.setupSceneAndRenderer(); // Creates scene, renderer, camera, lights, raycaster
-                this.updateGridAndCameraScale(); // Initial calculation of sizes and camera pos
-                this.setupGridVisuals(); // Creates grid lines and plane based on calculated sizes
-                this.renderBoard(); // Clears previous orbs (should be none)
+                this.setupSceneAndRenderer();
+                this.updateGridAndCameraScale(); // Initial calc
+                this.setupGridVisuals();      // Initial draw
+                this.renderBoard();
                 this.updateUI(); this.dom.restartButton.classList.add('hidden');
                 this.dom.canvas.addEventListener('pointerdown', this.boundOnCanvasInteraction);
                 this.dom.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -151,388 +216,119 @@
             setupSceneAndRenderer() {
                 this.scene = new THREE.Scene();
                 this.renderer = new THREE.WebGLRenderer({ canvas: this.dom.canvas, antialias: true, alpha: true });
-                this.renderer.setPixelRatio(window.devicePixelRatio); // Size set in updateGridAndCameraScale
-                this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 5000); // Aspect ratio set dynamically
-                this.scene.add(this.camera);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 5000); this.scene.add(this.camera);
                 this.ambientLight = new THREE.AmbientLight(0xcccccc, 0.8); this.scene.add(this.ambientLight);
                 this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.6); this.directionalLight.position.set(0.5, 1, 0.75).normalize(); this.scene.add(this.directionalLight);
                 this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
             }
 
-            // --- Dynamic Scaling & Positioning (REVISED) ---
-
+            // --- Dynamic Scaling & Positioning ---
             updateGridAndCameraScale() {
                 if (!this.renderer || !this.camera || !this.dom.canvasContainer) return;
-
-                const containerWidth = this.dom.canvasContainer.clientWidth;
-                const containerHeight = this.dom.canvasContainer.clientHeight;
-
-                // 1. Determine Cell Size based on fitting the grid in the container
-                // Total grid size includes cells and gaps between them
-                // Width = cols * cellSize + (cols - 1) * gapSize = cols * cellSize + (cols - 1) * cellSize * gapFactor = cellSize * (cols + (cols - 1) * gapFactor)
-                // Height = cellSize * (rows + (rows - 1) * gapFactor)
-                // We use cellStep = cellSize * (1 + gapFactor) for distance between centers
-                // Total width ~ cols * cellStep, Height ~ rows * cellStep (approx, more accurate below)
-
+                const containerWidth = this.dom.canvasContainer.clientWidth; const containerHeight = this.dom.canvasContainer.clientHeight;
                 const gapFactor = GRID_GAP_FACTOR;
-                // Calculate required cellSize to fit width and height respectively, leaving padding
-                const availableWidth = containerWidth * 0.95; // Use 95% of container
-                const availableHeight = containerHeight * 0.90; // Use 90% (leave more space for UI top/bottom)
-
-                // Calculate total spans in terms of cellSize units
-                const totalWidthUnits = this.cols + (this.cols - 1) * gapFactor;
-                const totalHeightUnits = this.rows + (this.rows - 1) * gapFactor;
-
-                const cellSizeBasedOnWidth = availableWidth / totalWidthUnits;
-                const cellSizeBasedOnHeight = availableHeight / totalHeightUnits;
-
-                // Use the smaller cell size to ensure the whole grid fits
+                const availableWidth = containerWidth * 0.95; const availableHeight = containerHeight * 0.90;
+                const totalWidthUnits = this.cols + (this.cols - 1) * gapFactor; const totalHeightUnits = this.rows + (this.rows - 1) * gapFactor;
+                const cellSizeBasedOnWidth = availableWidth / totalWidthUnits; const cellSizeBasedOnHeight = availableHeight / totalHeightUnits;
                 this.effectiveCellSize = Math.max(1, Math.min(cellSizeBasedOnWidth, cellSizeBasedOnHeight));
-                this.effectiveGapSize = this.effectiveCellSize * gapFactor;
-                this.cellStep = this.effectiveCellSize + this.effectiveGapSize; // Distance between centers
-
-                // Calculate the actual visual size of the grid block (used for camera positioning)
+                this.effectiveGapSize = this.effectiveCellSize * gapFactor; this.cellStep = this.effectiveCellSize + this.effectiveGapSize;
                 this.gridTotalVisualWidth = this.cols * this.effectiveCellSize + (this.cols - 1) * this.effectiveGapSize;
                 this.gridTotalVisualHeight = this.rows * this.effectiveCellSize + (this.rows - 1) * this.effectiveGapSize;
-
-                // 2. Update Renderer and Camera Aspect Ratio
-                this.renderer.setSize(containerWidth, containerHeight);
-                this.camera.aspect = containerWidth / containerHeight;
-
-                // 3. Calculate Camera Distance (Z position) - THIS IS THE CRITICAL PART
-                const fovRad = THREE.MathUtils.degToRad(this.camera.fov); // Vertical FOV in radians
-                const tanFovHalf = Math.tan(fovRad / 2);
-
-                // Calculate distance needed to fit the grid height (with padding)
-                const targetHeight = this.gridTotalVisualHeight * CAMERA_VIEW_PADDING;
-                const distanceForHeight = (targetHeight / 2) / tanFovHalf;
-
-                // Calculate distance needed to fit the grid width (with padding)
-                // We use the relationship: tan(fov_H / 2) = tan(fov_V / 2) * aspect
-                const targetWidth = this.gridTotalVisualWidth * CAMERA_VIEW_PADDING;
-                const distanceForWidth = (targetWidth / 2) / (tanFovHalf * this.camera.aspect);
-
-                // The camera must be at least the maximum of these distances away
-                const baseCameraZ = Math.max(distanceForHeight, distanceForWidth);
-                // Add a small base distance so grid isn't exactly filling the padded view, plus ensure minimum distance
-                const cameraZ = Math.max(baseCameraZ + this.effectiveCellSize, this.effectiveCellSize * 3);
-
-
-                // 4. Position Camera and LookAt point
-                // Grid origin (bottom-left cell's bottom-left corner) is at (0,0) in the gridGroup
-                // Center of the grid block
-                const gridCenterX = this.gridTotalVisualWidth / 2;
-                const gridCenterY = this.gridTotalVisualHeight / 2;
-
-                this.camera.position.set(
-                    gridCenterX,
-                    gridCenterY, // No tilt for simplicity first, can add later: + cameraZ * 0.05,
-                    cameraZ
-                );
-                this.camera.lookAt(gridCenterX, gridCenterY, 0); // Look at the center of the grid plane
-                this.camera.updateProjectionMatrix(); // Apply aspect ratio and FOV changes
-
-                // 5. Update Grid Plane Mesh for Raycasting (if it exists)
-                if (this.gridPlaneMesh) {
-                    this.updateGridPlaneGeometry(); // Separate helper for clarity
-                }
-                 // 6. Update Grid Lines (if they exist)
-                if (this.gridGroup) {
-                    this.setupGridVisuals(true); // Pass flag to indicate update
-                }
-
-                console.log(`Grid Scale Update: CellSize=${this.effectiveCellSize.toFixed(2)}, GridVis=${this.gridTotalVisualWidth.toFixed(1)}x${this.gridTotalVisualHeight.toFixed(1)}, CamZ=${cameraZ.toFixed(1)}`);
+                this.renderer.setSize(containerWidth, containerHeight); this.camera.aspect = containerWidth / containerHeight;
+                const fovRad = THREE.MathUtils.degToRad(this.camera.fov); const tanFovHalf = Math.tan(fovRad / 2);
+                const targetHeight = this.gridTotalVisualHeight * CAMERA_VIEW_PADDING; const distanceForHeight = (targetHeight / 2) / tanFovHalf;
+                const targetWidth = this.gridTotalVisualWidth * CAMERA_VIEW_PADDING; const distanceForWidth = (targetWidth / 2) / (tanFovHalf * this.camera.aspect);
+                const baseCameraZ = Math.max(distanceForHeight, distanceForWidth); const cameraZ = Math.max(baseCameraZ + this.effectiveCellSize, this.effectiveCellSize * 3);
+                const gridCenterX = this.gridTotalVisualWidth / 2; const gridCenterY = this.gridTotalVisualHeight / 2;
+                this.camera.position.set(gridCenterX, gridCenterY, cameraZ); this.camera.lookAt(gridCenterX, gridCenterY, 0);
+                this.camera.updateProjectionMatrix();
+                if (this.gridPlaneMesh) { this.updateGridPlaneGeometry(); }
+                if (this.gridGroup) { this.setupGridVisuals(true); } // Update lines
+                // console.log(`Grid Scale Update: CellSize=${this.effectiveCellSize.toFixed(2)}, GridVis=${this.gridTotalVisualWidth.toFixed(1)}x${this.gridTotalVisualHeight.toFixed(1)}, CamZ=${cameraZ.toFixed(1)}`);
             }
 
             updateGridPlaneGeometry() {
                  if (!this.gridPlaneMesh) return;
-                 const planeWidth = this.gridTotalVisualWidth;
-                 const planeHeight = this.gridTotalVisualHeight;
-                 const gridCenterX = planeWidth / 2;
-                 const gridCenterY = planeHeight / 2;
-
-                 this.gridPlaneMesh.geometry.dispose(); // Dispose old geometry
+                 const planeWidth = this.gridTotalVisualWidth; const planeHeight = this.gridTotalVisualHeight;
+                 const gridCenterX = planeWidth / 2; const gridCenterY = planeHeight / 2;
+                 this.gridPlaneMesh.geometry.dispose();
                  this.gridPlaneMesh.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-                 this.gridPlaneMesh.position.set(gridCenterX, gridCenterY, -0.01); // Place slightly behind lines/orbs
+                 this.gridPlaneMesh.position.set(gridCenterX, gridCenterY, -0.01);
             }
 
-            // --- Grid Visuals (Simplified Origin) ---
-
+            // --- Grid Visuals ---
             setupGridVisuals(isUpdate = false) {
-                if (this.gridGroup && !isUpdate) {
-                    this.scene.remove(this.gridGroup);
-                    this.disposeObject(this.gridGroup);
-                    this.gridGroup = null;
-                    this.gridPlaneMesh = null;
-                } else if (this.gridGroup && isUpdate) {
-                    // Remove only lines, keep the group and plane (plane geometry updated separately)
-                    const linesToRemove = this.gridGroup.children.filter(child => child !== this.gridPlaneMesh);
-                    linesToRemove.forEach(line => {
-                        this.gridGroup.remove(line);
-                        this.disposeObject(line);
-                    });
-                }
-
+                if (this.gridGroup && !isUpdate) { this.scene.remove(this.gridGroup); this.disposeObject(this.gridGroup); this.gridGroup = null; this.gridPlaneMesh = null; }
+                else if (this.gridGroup && isUpdate) { const linesToRemove = this.gridGroup.children.filter(child => child !== this.gridPlaneMesh); linesToRemove.forEach(line => { this.gridGroup.remove(line); this.disposeObject(line); }); }
                 if (!isUpdate) {
-                    this.gridGroup = new THREE.Group();
-                    this.gridGroup.name = "GridGroup";
-                    this.scene.add(this.gridGroup); // Add group to scene
-
-                    this.gridLineMaterial = new THREE.LineBasicMaterial({
-                        color: NEUTRAL_GRID_COLOR, transparent: true, opacity: 0.7
-                    });
-
-                    // Invisible Plane for Raycasting (Geometry updated in updateGridPlaneGeometry)
-                    const planeGeometry = new THREE.PlaneGeometry(1, 1); // Placeholder size
-                    this.gridPlaneMesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
-                    this.gridPlaneMesh.name = "GridPlane";
-                    this.gridGroup.add(this.gridPlaneMesh); // Add plane to the group
-                    this.updateGridPlaneGeometry(); // Set initial size and position
+                    this.gridGroup = new THREE.Group(); this.gridGroup.name = "GridGroup"; this.scene.add(this.gridGroup);
+                    this.gridLineMaterial = new THREE.LineBasicMaterial({ color: NEUTRAL_GRID_COLOR, transparent: true, opacity: 0.7 });
+                    const planeGeometry = new THREE.PlaneGeometry(1, 1); this.gridPlaneMesh = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })); this.gridPlaneMesh.name = "GridPlane"; this.gridGroup.add(this.gridPlaneMesh); this.updateGridPlaneGeometry();
                 }
-
-                // (Re)Create Grid Lines based on current dimensions, relative to gridGroup origin (0,0)
-                const maxX = this.gridTotalVisualWidth;
-                const maxY = this.gridTotalVisualHeight;
-
-                // Vertical lines
-                for (let i = 0; i <= this.cols; i++) {
-                    const x = i * this.cellStep - (this.effectiveGapSize / 2); // Position lines correctly between cells
-                    const geometry = new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3(x, -this.effectiveGapSize / 2, 0),             // Start slightly below bottom edge
-                        new THREE.Vector3(x, maxY + this.effectiveGapSize / 2, 0)    // End slightly above top edge
-                    ]);
-                    this.gridGroup.add(new THREE.Line(geometry, this.gridLineMaterial));
-                }
-                // Horizontal lines
-                for (let i = 0; i <= this.rows; i++) {
-                    const y = i * this.cellStep - (this.effectiveGapSize / 2); // Position lines correctly between cells
-                    const geometry = new THREE.BufferGeometry().setFromPoints([
-                         new THREE.Vector3(-this.effectiveGapSize / 2, y, 0),            // Start slightly left of left edge
-                        new THREE.Vector3(maxX + this.effectiveGapSize / 2, y, 0)   // End slightly right of right edge
-                    ]);
-                    this.gridGroup.add(new THREE.Line(geometry, this.gridLineMaterial));
-                }
-                // console.log(`Grid visuals ${isUpdate ? 'updated' : 'created'}.`);
+                const maxX = this.gridTotalVisualWidth; const maxY = this.gridTotalVisualHeight;
+                for (let i = 0; i <= this.cols; i++) { const x = i * this.cellStep - (this.effectiveGapSize / 2); const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, -this.effectiveGapSize/2, 0), new THREE.Vector3(x, maxY + this.effectiveGapSize/2, 0)]); this.gridGroup.add(new THREE.Line(geom, this.gridLineMaterial)); }
+                for (let i = 0; i <= this.rows; i++) { const y = i * this.cellStep - (this.effectiveGapSize / 2); const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-this.effectiveGapSize/2, y, 0), new THREE.Vector3(maxX + this.effectiveGapSize/2, y, 0)]); this.gridGroup.add(new THREE.Line(geom, this.gridLineMaterial)); }
             }
 
             // --- Audio ---
-            initAudioContext() { if (this.audioContext) return; try { window.AudioContext = window.AudioContext || window.webkitAudioContext; if (window.AudioContext) { this.audioContext = new AudioContext(); if (this.audioContext.state === 'suspended') { console.log("AudioContext suspended, will try resume on interaction."); } this.soundEnabled = true; console.log("AudioContext initialized."); } else { console.warn("Web Audio API not supported."); this.soundEnabled = false; } } catch (e) { console.error("Error creating AudioContext:", e); this.soundEnabled = false; } }
-            playSound(type, freq, duration, volume = 0.3) { if (this.isMuted || !this.soundEnabled || !this.audioContext) return; if (this.audioContext.state === 'suspended') { this.audioContext.resume().then(() => { console.log("AudioContext resumed."); this._executeSound(type, freq, duration, volume); }).catch(e => console.warn("AudioContext resume failed:", e)); return; } if (this.audioContext.state === 'running') { this._executeSound(type, freq, duration, volume); } }
-            _executeSound(type, freq, duration, volume) { try { const osc = this.audioContext.createOscillator(); const gainNode = this.audioContext.createGain(); osc.connect(gainNode); gainNode.connect(this.audioContext.destination); osc.type = type; osc.frequency.setValueAtTime(freq, this.audioContext.currentTime); gainNode.gain.setValueAtTime(0, this.audioContext.currentTime); gainNode.gain.linearRampToValueAtTime(volume, this.audioContext.currentTime + 0.01); gainNode.gain.linearRampToValueAtTime(0, this.audioContext.currentTime + duration); osc.start(this.audioContext.currentTime); osc.stop(this.audioContext.currentTime + duration); } catch (e) { console.error("Error playing sound:", e); } }
-            playSoundPlace() { this.playSound('triangle', 880, 0.08, 0.15); }
-            playSoundExplode() { this.playSound('square', 200, 0.18, 0.25); }
-            toggleMute() { this.isMuted = !this.isMuted; console.log("Muted:", this.isMuted); this.updateMuteButtonVisuals(); if (!this.isMuted && this.audioContext && this.audioContext.state === 'suspended') { console.log("Attempting resume AudioContext on unmute."); this.audioContext.resume().catch(e => console.warn("Resume on unmute failed:", e)); } }
-            updateMuteButtonVisuals() { if (!this.dom.muteButton) return; this.dom.muteButton.textContent = this.isMuted ? '🔇' : '🔊'; this.dom.muteButton.classList.toggle('muted', this.isMuted); this.dom.muteButton.setAttribute('title', this.isMuted ? 'Unmute Sound' : 'Mute Sound'); }
+            initAudioContext() { if(this.audioContext)return;try{window.AudioContext=window.AudioContext||window.webkitAudioContext;if(window.AudioContext){this.audioContext=new AudioContext();if(this.audioContext.state==='suspended'){console.log("AudioContext suspended, will try resume on interaction.");}this.soundEnabled=true;console.log("AudioContext initialized.");}else{console.warn("Web Audio API not supported.");this.soundEnabled=false;}}catch(e){console.error("Error creating AudioContext:",e);this.soundEnabled=false;}}
+            playSound(t,f,d,v=0.3){if(this.isMuted||!this.soundEnabled||!this.audioContext)return;if(this.audioContext.state==='suspended'){this.audioContext.resume().then(()=>{console.log("AudioContext resumed.");this._executeSound(t,f,d,v);}).catch(e=>console.warn("AudioContext resume failed:",e));return;}if(this.audioContext.state==='running'){this._executeSound(t,f,d,v);}}
+            _executeSound(t,f,d,v){try{const o=this.audioContext.createOscillator();const g=this.audioContext.createGain();o.connect(g);g.connect(this.audioContext.destination);o.type=t;o.frequency.setValueAtTime(f,this.audioContext.currentTime);g.gain.setValueAtTime(0,this.audioContext.currentTime);g.gain.linearRampToValueAtTime(v,this.audioContext.currentTime+0.01);g.gain.linearRampToValueAtTime(0,this.audioContext.currentTime+d);o.start(this.audioContext.currentTime);o.stop(this.audioContext.currentTime+d);}catch(e){console.error("Error playing sound:",e);}}
+            playSoundPlace(){this.playSound('triangle',880,0.08,0.15);}
+            playSoundExplode(){this.playSound('square',200,0.18,0.25);}
+            toggleMute(){this.isMuted=!this.isMuted;console.log("Muted:",this.isMuted);this.updateMuteButtonVisuals();if(!this.isMuted&&this.audioContext&&this.audioContext.state==='suspended'){console.log("Attempting resume AudioContext on unmute.");this.audioContext.resume().catch(e=>console.warn("Resume on unmute failed:",e));}}
+            updateMuteButtonVisuals(){if(!this.dom.muteButton)return;this.dom.muteButton.textContent=this.isMuted?'🔇':'🔊';this.dom.muteButton.classList.toggle('muted',this.isMuted);this.dom.muteButton.setAttribute('title',this.isMuted?'Unmute Sound':'Mute Sound');}
 
             // --- Game Logic & Rendering ---
-            getCriticalMass = (r, c) => { const isCorner = (r === 0 || r === this.rows - 1) && (c === 0 || c === this.cols - 1); const isEdge = !isCorner && (r === 0 || r === this.rows - 1 || c === 0 || c === this.cols - 1); if (isCorner) return 2; if (isEdge) return 3; return 4; };
-
-            // Calculate cell CENTER position relative to gridGroup origin (0,0)
-            getCellCenter(r, c) {
-                const x = c * this.cellStep + this.effectiveCellSize / 2;
-                // Board row 0 is top, visual Y row 0 is bottom
-                const y = (this.rows - 1 - r) * this.cellStep + this.effectiveCellSize / 2;
-                return new THREE.Vector3(x, y, 0); // Z is 0, orbs will be slightly offset
-            }
+            getCriticalMass=(r,c)=>{const iC=(r===0||r===this.rows-1)&&(c===0||c===this.cols-1);const iE=!iC&&(r===0||r===this.rows-1||c===0||c===this.cols-1);if(iC)return 2;if(iE)return 3;return 4;};
+            getCellCenter(r,c){const x=c*this.cellStep+this.effectiveCellSize/2;const y=(this.rows-1-r)*this.cellStep+this.effectiveCellSize/2;return new THREE.Vector3(x,y,0);}
 
             renderCell(r, c) {
-                if (!this.gridGroup || !this.board[r]?.[c]) return; // Check gridGroup existence
-
-                const cellState = this.board[r][c];
-                const cellKey = `${r}-${c}`;
-                const cellCenter = this.getCellCenter(r, c); // Get center position
-
-                // Remove old group for this cell if it exists
-                if (this.orbGroups[cellKey]) {
-                    this.gridGroup.remove(this.orbGroups[cellKey]); // Remove from parent group
-                    this.disposeObject(this.orbGroups[cellKey]); // Dispose contents
-                    delete this.orbGroups[cellKey];
-                }
-
+                if (!this.gridGroup || !this.board[r]?.[c]) return;
+                const cellState = this.board[r][c]; const cellKey = `${r}-${c}`; const cellCenter = this.getCellCenter(r, c);
+                if (this.orbGroups[cellKey]) { this.gridGroup.remove(this.orbGroups[cellKey]); this.disposeObject(this.orbGroups[cellKey]); delete this.orbGroups[cellKey]; }
                 if (cellState.count > 0 && cellState.owner !== null) {
-                    const playerIndex = cellState.owner - 1;
-                    if (playerIndex < 0 || playerIndex >= this.playerColors.length) return;
-
-                    const color = this.playerColors[playerIndex];
-                    const material = new THREE.MeshLambertMaterial({ color: color, emissive: color, emissiveIntensity: 0.4 });
-
-                    const criticalMass = this.getCriticalMass(r, c);
-                    const scaleFactor = (cellState.count === criticalMass - 1) ? 1.15 : 1.0;
-                    const radius = this.effectiveCellSize * ORB_RADIUS_FACTOR * scaleFactor;
-                    const orbGeometry = new THREE.SphereGeometry(radius, ORB_DETAIL.segments, ORB_DETAIL.rings);
-
-                    // Create a new group for this cell's orbs, positioned at cell center
-                    const cellOrbGroup = new THREE.Group();
-                    cellOrbGroup.position.copy(cellCenter); // Position the group
-                    this.orbGroups[cellKey] = cellOrbGroup; // Store reference
-                    this.gridGroup.add(cellOrbGroup); // Add to the main grid group
-
-                    // Orb positions *relative* to the cellOrbGroup's center (which is cellCenter)
-                    const offset = this.effectiveCellSize * 0.18 * scaleFactor;
-                    const positions = [];
-                     if (cellState.count === 1) positions.push(new THREE.Vector3(0, 0, radius * 0.5)); // Slightly raise Z
-                     else if (cellState.count === 2) { positions.push(new THREE.Vector3(-offset, 0, radius*0.4)); positions.push(new THREE.Vector3(offset, 0, radius*0.6)); }
-                     else { const angle = Math.PI*2/3; positions.push(new THREE.Vector3(0, offset, radius*0.5)); positions.push(new THREE.Vector3(offset*Math.sin(angle), offset*Math.cos(angle), radius*0.4)); positions.push(new THREE.Vector3(offset*Math.sin(angle*2), offset*Math.cos(angle*2), radius*0.6)); }
-
-                    for (let i = 0; i < Math.min(cellState.count, 3); i++) {
-                        const orbMesh = new THREE.Mesh(orbGeometry, material);
-                        orbMesh.position.copy(positions[i]); // Position relative to group center
-                        orbMesh.name = `Orb_${r}-${c}_${i}`;
-                        cellOrbGroup.add(orbMesh); // Add orb to the cell's group
-                    }
-                    orbGeometry.dispose(); // Dispose geometry as it's unique per cell render (unless optimized)
-                    // Note: material is shared if not cloned, dispose carefully later if needed
+                    const playerIndex = cellState.owner - 1; if (playerIndex < 0 || playerIndex >= this.playerColors.length) return;
+                    const color = this.playerColors[playerIndex]; const material = new THREE.MeshLambertMaterial({ color: color, emissive: color, emissiveIntensity: 0.4 });
+                    const criticalMass = this.getCriticalMass(r, c); const scaleFactor = (cellState.count === criticalMass - 1) ? 1.15 : 1.0;
+                    const radius = this.effectiveCellSize * ORB_RADIUS_FACTOR * scaleFactor; const orbGeometry = new THREE.SphereGeometry(radius, ORB_DETAIL.segments, ORB_DETAIL.rings);
+                    const cellOrbGroup = new THREE.Group(); cellOrbGroup.position.copy(cellCenter); this.orbGroups[cellKey] = cellOrbGroup; this.gridGroup.add(cellOrbGroup);
+                    const offset = this.effectiveCellSize * 0.18 * scaleFactor; const positions = [];
+                    if (cellState.count === 1) positions.push(new THREE.Vector3(0, 0, radius*0.5));
+                    else if (cellState.count === 2) { positions.push(new THREE.Vector3(-offset, 0, radius*0.4)); positions.push(new THREE.Vector3(offset, 0, radius*0.6)); }
+                    else { const a=Math.PI*2/3; positions.push(new THREE.Vector3(0, offset, radius*0.5)); positions.push(new THREE.Vector3(offset*Math.sin(a), offset*Math.cos(a), radius*0.4)); positions.push(new THREE.Vector3(offset*Math.sin(a*2), offset*Math.cos(a*2), radius*0.6)); }
+                    for (let i = 0; i < Math.min(cellState.count, 3); i++) { const orbMesh = new THREE.Mesh(orbGeometry, material); orbMesh.position.copy(positions[i]); orbMesh.name = `Orb_${r}-${c}_${i}`; cellOrbGroup.add(orbMesh); }
+                    orbGeometry.dispose();
                 }
             }
 
-            renderBoard() { if (!this.board || !this.gridGroup) return; for (let r=0; r<this.rows; r++) for (let c=0; c<this.cols; c++) this.renderCell(r, c); }
+            renderBoard() { if (!this.board || !this.gridGroup) return; for(let r=0; r<this.rows; r++) for(let c=0; c<this.cols; c++) this.renderCell(r,c); }
 
-            updateUI() {
-                if (!this.dom.messageArea || !this.gridLineMaterial) return;
-                const msgArea = this.dom.messageArea; const restartBtn = this.dom.restartButton;
-                msgArea.classList.remove('winner-message'); msgArea.style.cssText = ''; msgArea.style.setProperty('--player-color-css', '#ffffff');
-                if (this.gameOver) {
-                    this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR); msgArea.classList.add('winner-message'); restartBtn.classList.remove('hidden');
-                    if (this.activePlayers.size === 1) {
-                        const winnerId = [...this.activePlayers][0]; const winnerIndex = winnerId - 1; const winnerColorCSS = this.playerColorsCSS[winnerIndex] || '#ffffff';
-                        msgArea.textContent = `Player ${winnerId} Wins!`; msgArea.style.backgroundColor = winnerColorCSS; msgArea.style.color = '#000000'; msgArea.style.borderColor = winnerColorCSS; msgArea.style.setProperty('--player-color-css', winnerColorCSS);
-                        restartBtn.style.backgroundColor = winnerColorCSS; restartBtn.style.borderColor = winnerColorCSS; restartBtn.style.color = '#000000'; restartBtn.style.boxShadow = `0 0 10px ${winnerColorCSS}`;
-                    } else { msgArea.textContent = `Game Over! Draw or Error.`; msgArea.style.backgroundColor = '#555'; msgArea.style.color = '#fff'; msgArea.style.borderColor = '#777'; msgArea.style.setProperty('--player-color-css', '#777'); restartBtn.style.backgroundColor=''; restartBtn.style.borderColor=''; restartBtn.style.color=''; restartBtn.style.boxShadow=''; }
-                } else {
-                    const playerIndex = this.currentPlayer - 1; if (playerIndex < 0 || playerIndex >= this.playerColors.length) { console.error("Invalid player index:", playerIndex); this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR); msgArea.textContent="Error"; msgArea.style.backgroundColor='#ff0000'; msgArea.style.color='#ffffff'; return; }
-                    const colorHex = this.playerColors[playerIndex]; const colorCSS = this.playerColorsCSS[playerIndex]; this.gridLineMaterial.color.setHex(colorHex); msgArea.textContent = `Player ${this.currentPlayer}'s Turn`; const colorRGB = parseInt(colorCSS.slice(1), 16); const r = (colorRGB>>16)&255; const g = (colorRGB>>8)&255; const b = colorRGB&255; msgArea.style.backgroundColor = `rgba(${r},${g},${b},0.3)`; msgArea.style.color = colorCSS; msgArea.style.border = `1px solid ${colorCSS}`; msgArea.style.boxShadow = `0 0 6px ${colorCSS}`; restartBtn.classList.add('hidden'); restartBtn.style.backgroundColor=''; restartBtn.style.borderColor=''; restartBtn.style.color=''; restartBtn.style.boxShadow='';
-                }
-            }
+            updateUI() { /* ... (UI update logic remains the same) ... */ if(!this.dom.messageArea||!this.gridLineMaterial)return;const m=this.dom.messageArea;const b=this.dom.restartButton;m.classList.remove('winner-message');m.style.cssText='';m.style.setProperty('--player-color-css','#ffffff');if(this.gameOver){this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);m.classList.add('winner-message');b.classList.remove('hidden');if(this.activePlayers.size===1){const w=[...this.activePlayers][0];const i=w-1;const c=this.playerColorsCSS[i]||'#ffffff';m.textContent=`Player ${w} Wins!`;m.style.backgroundColor=c;m.style.color='#000000';m.style.borderColor=c;m.style.setProperty('--player-color-css',c);b.style.backgroundColor=c;b.style.borderColor=c;b.style.color='#000000';b.style.boxShadow=`0 0 10px ${c}`;}else{m.textContent=`Game Over! Draw or Error.`;m.style.backgroundColor='#555';m.style.color='#fff';m.style.borderColor='#777';m.style.setProperty('--player-color-css','#777');b.style.backgroundColor='';b.style.borderColor='';b.style.color='';b.style.boxShadow='';}}else{const i=this.currentPlayer-1;if(i<0||i>=this.playerColors.length){console.error("Invalid player index:",i);this.gridLineMaterial.color.setHex(NEUTRAL_GRID_COLOR);m.textContent="Error";m.style.backgroundColor='#ff0000';m.style.color='#ffffff';return;}const h=this.playerColors[i];const c=this.playerColorsCSS[i];this.gridLineMaterial.color.setHex(h);m.textContent=`Player ${this.currentPlayer}'s Turn`;const r=parseInt(c.slice(1),16);const R=(r>>16)&255;const G=(r>>8)&255;const B=r&255;m.style.backgroundColor=`rgba(${R},${G},${B},0.3)`;m.style.color=c;m.style.border=`1px solid ${c}`;m.style.boxShadow=`0 0 6px ${c}`;b.classList.add('hidden');b.style.backgroundColor='';b.style.borderColor='';b.style.color='';b.style.boxShadow='';}}
 
-            // --- Player Interaction (Revised Raycasting) ---
-            onCanvasInteraction(event) {
-                if (this.isExploding || this.gameOver || !this.raycaster || !this.camera || !this.gridPlaneMesh || !event.isPrimary) return;
-                event.preventDefault();
-                const clientX = event.clientX; const clientY = event.clientY;
-                const rect = this.dom.canvas.getBoundingClientRect();
-                this.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-                this.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-                this.raycaster.setFromCamera(this.mouse, this.camera);
+            // --- Player Interaction ---
+            onCanvasInteraction(event) { /* ... (Interaction logic remains the same) ... */ if(this.isExploding||this.gameOver||!this.raycaster||!this.camera||!this.gridPlaneMesh||!event.isPrimary)return;event.preventDefault();const x=event.clientX;const y=event.clientY;const r=this.dom.canvas.getBoundingClientRect();this.mouse.x=((x-r.left)/r.width)*2-1;this.mouse.y=-((y-r.top)/r.height)*2+1;this.raycaster.setFromCamera(this.mouse,this.camera);const i=this.raycaster.intersectObject(this.gridPlaneMesh,false);if(i.length>0){const w=i[0].point;const l=this.gridGroup.worldToLocal(w.clone());const c=Math.floor(l.x/this.cellStep);const rv=Math.floor(l.y/this.cellStep);const R=this.rows-1-rv;if(R>=0&&R<this.rows&&c>=0&&c<this.cols){const C=this.board[R][c];if(C.owner===null||C.owner===this.currentPlayer){this.placeOrb(R,c);}else{console.log(`Cell (${R}, ${c}) owned by P${C.owner}.`);}}else{console.log(`Click outside grid (Local: ${l.x.toFixed(1)},${l.y.toFixed(1)} -> r:${R}, c:${c})`);}}}
 
-                // Intersect with the grid plane mesh (which is inside gridGroup)
-                const intersects = this.raycaster.intersectObject(this.gridPlaneMesh, false);
-
-                if (intersects.length > 0) {
-                    // The intersection point is in world space. Convert it to the gridGroup's local space.
-                    const worldIntersectionPoint = intersects[0].point;
-                    const localIntersectionPoint = this.gridGroup.worldToLocal(worldIntersectionPoint.clone());
-
-                    // Now, convert the local XY coordinates to grid indices (r, c)
-                    // Grid's visual bottom-left is at local (0,0)
-                    const c = Math.floor(localIntersectionPoint.x / this.cellStep);
-                    const r_visual = Math.floor(localIntersectionPoint.y / this.cellStep); // Visual row (0=bottom)
-                    const r = this.rows - 1 - r_visual; // Board row (0=top)
-
-                    if (r >= 0 && r < this.rows && c >= 0 && c < this.cols) {
-                        const cell = this.board[r][c];
-                        if (cell.owner === null || cell.owner === this.currentPlayer) { this.placeOrb(r, c); }
-                        else { console.log(`Cell (${r}, ${c}) owned by P${cell.owner}.`); }
-                    } else { console.log(`Click outside grid bounds (Local: ${localIntersectionPoint.x.toFixed(1)},${localIntersectionPoint.y.toFixed(1)} -> r:${r}, c:${c})`); }
-                }
-            }
-
-            placeOrb(r, c) {
-                if (this.isExploding || this.gameOver) return;
-                console.log(`P${this.currentPlayer} places at (${r}, ${c})`); this.playSoundPlace(); this.turnCount++;
-                const cell = this.board[r][c]; cell.owner = this.currentPlayer; cell.count++;
-                this.renderCell(r, c);
-                const criticalMass = this.getCriticalMass(r, c);
-                if (cell.count >= criticalMass) { console.log(`Cell (${r}, ${c}) critical.`); this.isExploding = true; this.explodeCell(r, c); }
-                else { this.checkPlayerElimination(); this.checkWinCondition(); if (!this.gameOver) this.switchToNextPlayer(); this.updateUI(); }
-            }
-
-            switchToNextPlayer() {
-                if (this.activePlayers.size <= 1) { if (!this.gameOver) { this.checkWinCondition(); this.updateUI(); } return; }
-                let nextPlayer = this.currentPlayer; let attempts = 0; const maxAttempts = this.numPlayers + 1;
-                do { nextPlayer = (nextPlayer % this.numPlayers) + 1; attempts++; if (attempts > maxAttempts) { console.error("Infinite loop in switchToNextPlayer!"); this.gameOver = true; return; } } while (!this.activePlayers.has(nextPlayer));
-                this.currentPlayer = nextPlayer; console.log(`Switched to P${this.currentPlayer}`);
-            }
+            placeOrb(r,c){if(this.isExploding||this.gameOver)return;console.log(`P${this.currentPlayer} places at (${r}, ${c})`);this.playSoundPlace();this.turnCount++;const l=this.board[r][c];l.owner=this.currentPlayer;l.count++;this.renderCell(r,c);const m=this.getCriticalMass(r,c);if(l.count>=m){console.log(`Cell (${r}, ${c}) critical.`);this.isExploding=true;this.explodeCell(r,c);}else{this.checkPlayerElimination();this.checkWinCondition();if(!this.gameOver)this.switchToNextPlayer();this.updateUI();}}
+            switchToNextPlayer(){if(this.activePlayers.size<=1){if(!this.gameOver){this.checkWinCondition();this.updateUI();}return;}let n=this.currentPlayer;let a=0;const m=this.numPlayers+1;do{n=(n%this.numPlayers)+1;a++;if(a>m){console.error("Infinite loop in switchToNextPlayer!");this.gameOver=true;return;}}while(!this.activePlayers.has(n));this.currentPlayer=n;console.log(`Switched to P${this.currentPlayer}`);}
 
             // --- Explosion Logic ---
-            async explodeCell(r_initial, c_initial) {
-                let explosionQueue = [{ r: r_initial, c: c_initial }];
-                const projectileGeometry = new THREE.SphereGeometry(this.effectiveCellSize * PROJECTILE_RADIUS_FACTOR, PROJECTILE_DETAIL.segments, PROJECTILE_DETAIL.rings);
-                const explosionSpeed = EXPLOSION_SPEED_FACTOR * this.effectiveCellSize; // Speed scaled with cell size
-
-                while (explosionQueue.length > 0) {
-                    const currentWaveTasks = []; const nextWaveQueue = []; const nextWaveProcessed = new Set();
-                    for (const { r, c } of explosionQueue) {
-                        const cell = this.board[r]?.[c]; if (!cell || cell.count < this.getCriticalMass(r, c) || cell.owner === null) continue;
-                        this.playSoundExplode();
-                        const explodingPlayer = cell.owner; const startPos = this.getCellCenter(r, c); const playerIndex = explodingPlayer - 1; if (playerIndex < 0 || playerIndex >= this.playerColors.length) continue;
-                        const color = this.playerColors[playerIndex]; const projectileMaterial = new THREE.MeshLambertMaterial({ color: color, emissive: color, emissiveIntensity: 0.6 });
-                        const cellKey = `${r}-${c}`; if (this.orbGroups[cellKey]) { this.gridGroup.remove(this.orbGroups[cellKey]); this.disposeObject(this.orbGroups[cellKey]); delete this.orbGroups[cellKey]; }
-                        cell.count = 0; cell.owner = null;
-                        const neighbors = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
-                        for (const { dr, dc } of neighbors) {
-                            const nr = r + dr; const nc = c + dc;
-                            if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols) {
-                                const neighborCell = this.board[nr][nc]; const endPos = this.getCellCenter(nr, nc);
-                                const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial.clone());
-                                // Projectiles are relative to the gridGroup's origin
-                                projectile.position.copy(startPos);
-                                projectile.name = `Projectile_${r}-${c}_to_${nr}-${nc}`;
-                                this.gridGroup.add(projectile); // Add to gridGroup
-                                const distance = startPos.distanceTo(endPos); const duration = distance / explosionSpeed;
-                                const animPromise = this.animateProjectile(projectile, endPos, duration)
-                                    .then(() => { if (projectile.parent) projectile.parent.remove(projectile); this.disposeObject(projectile); neighborCell.owner = explodingPlayer; neighborCell.count++; this.renderCell(nr, nc); const neighborKey = `${nr}-${nc}`; if (neighborCell.count >= this.getCriticalMass(nr, nc) && !nextWaveProcessed.has(neighborKey)) { nextWaveQueue.push({ r: nr, c: nc }); nextWaveProcessed.add(neighborKey); } })
-                                    .catch(err => { console.error("Proj anim failed:", err); if(projectile.parent) projectile.parent.remove(projectile); this.disposeObject(projectile); });
-                                currentWaveTasks.push(animPromise);
-                            }
-                        }
-                        projectileMaterial.dispose(); // Dispose wave material
-                    } // End cell loop
-                    if (currentWaveTasks.length > 0) await Promise.all(currentWaveTasks);
-                    if (nextWaveQueue.length > 0) await new Promise(res => setTimeout(res, EXPLOSION_DELAY_MS));
-                    explosionQueue = nextWaveQueue;
-                } // End while
-                projectileGeometry.dispose(); this.isExploding = false; console.log("Explosion finished.");
-                this.checkPlayerElimination(); this.checkWinCondition();
-                if (!this.gameOver && !this.activePlayers.has(this.currentPlayer)) { console.log(`Player ${this.currentPlayer} eliminated, switching.`); this.switchToNextPlayer(); }
-                this.updateUI();
-            }
-
-            animateProjectile(mesh, targetPos, durationSec) {
-                return new Promise((resolve, reject) => {
-                    if (!mesh || !targetPos || durationSec <= 0) return reject(new Error("Invalid proj params"));
-                    const startPos = mesh.position.clone(); let startTime = null;
-                    const step = (timestamp) => { if (!mesh || !mesh.parent) return resolve(); if (!startTime) startTime = timestamp; const elapsed = (timestamp - startTime) / 1000; const progress = Math.min(elapsed / durationSec, 1.0); mesh.position.lerpVectors(startPos, targetPos, progress); if (progress < 1) requestAnimationFrame(step); else resolve(); };
-                    requestAnimationFrame(step);
-                });
-            }
+            async explodeCell(r_initial, c_initial) { /* ... (Explosion logic remains the same) ... */ let q=[{r:r_initial,c:c_initial}];const g=new THREE.SphereGeometry(this.effectiveCellSize*PROJECTILE_RADIUS_FACTOR,PROJECTILE_DETAIL.segments,PROJECTILE_DETAIL.rings);const s=EXPLOSION_SPEED_FACTOR*this.effectiveCellSize;while(q.length>0){const t=[];const n=[];const p=new Set();for(const{r,c}of q){const l=this.board[r]?.[c];if(!l||l.count<this.getCriticalMass(r,c)||l.owner===null)continue;this.playSoundExplode();const E=l.owner;const S=this.getCellCenter(r,c);const I=E-1;if(I<0||I>=this.playerColors.length)continue;const C=this.playerColors[I];const M=new THREE.MeshLambertMaterial({color:C,emissive:C,emissiveIntensity:0.6});const k=`${r}-${c}`;if(this.orbGroups[k]){this.gridGroup.remove(this.orbGroups[k]);this.disposeObject(this.orbGroups[k]);delete this.orbGroups[k];}l.count=0;l.owner=null;const N=[{dr:-1,dc:0},{dr:1,dc:0},{dr:0,dc:-1},{dr:0,dc:1}];for(const{dr,dc}of N){const nr=r+dr;const nc=c+dc;if(nr>=0&&nr<this.rows&&nc>=0&&nc<this.cols){const L=this.board[nr][nc];const O=this.getCellCenter(nr,nc);const P=new THREE.Mesh(g,M.clone());P.position.copy(S);P.name=`Projectile_${r}-${c}_to_${nr}-${nc}`;this.gridGroup.add(P);const D=S.distanceTo(O);const U=D/s;const A=this.animateProjectile(P,O,U).then(()=>{if(P.parent)P.parent.remove(P);this.disposeObject(P);L.owner=E;L.count++;this.renderCell(nr,nc);const K=`${nr}-${nc}`;if(L.count>=this.getCriticalMass(nr,nc)&&!p.has(K)){n.push({r:nr,c:nc});p.add(K);}}).catch(e=>{console.error("Proj anim failed:",e);if(P.parent)P.parent.remove(P);this.disposeObject(P);});t.push(A);}}M.dispose();}if(t.length>0)await Promise.all(t);if(n.length>0)await new Promise(e=>setTimeout(e,EXPLOSION_DELAY_MS));q=n;}g.dispose();this.isExploding=false;console.log("Explosion finished.");this.checkPlayerElimination();this.checkWinCondition();if(!this.gameOver&&!this.activePlayers.has(this.currentPlayer)){console.log(`Player ${this.currentPlayer} eliminated, switching.`);this.switchToNextPlayer();}this.updateUI();}
+            animateProjectile(m,t,d){return new Promise((s,f)=>{if(!m||!t||d<=0)return f(new Error("Invalid proj params"));const p=m.position.clone();let e=null;const c=a=>{if(!m||!m.parent)return s();if(!e)e=a;const n=(a-e)/1000;const o=Math.min(n/d,1.0);m.position.lerpVectors(p,t,o);if(o<1)requestAnimationFrame(c);else s();};requestAnimationFrame(c);});}
 
             // --- Game State Checks ---
-            checkPlayerElimination() { if (this.turnCount < this.numPlayers) return; const playersWithOrbs = new Set(); for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) if (this.board[r][c].owner !== null) playersWithOrbs.add(this.board[r][c].owner); const playersToRemove = []; for (const playerNum of this.activePlayers) if (!playersWithOrbs.has(playerNum)) playersToRemove.push(playerNum); if (playersToRemove.length > 0) playersToRemove.forEach(p => { this.activePlayers.delete(p); console.log(`Player ${p} eliminated.`); }); }
-            checkWinCondition() { if (this.gameOver || this.turnCount < this.numPlayers) return; if (this.activePlayers.size === 1) { this.gameOver = true; console.log(`Game Over: P${[...this.activePlayers][0]} wins!`); } else if (this.activePlayers.size === 0) { this.gameOver = true; console.log("Game Over: Draw!"); } }
+            checkPlayerElimination(){if(this.turnCount<this.numPlayers)return;const p=new Set();for(let r=0;r<this.rows;r++)for(let c=0;c<this.cols;c++)if(this.board[r][c].owner!==null)p.add(this.board[r][c].owner);const t=[];for(const n of this.activePlayers)if(!p.has(n))t.push(n);if(t.length>0)t.forEach(e=>{this.activePlayers.delete(e);console.log(`Player ${e} eliminated.`);});}
+            checkWinCondition(){if(this.gameOver||this.turnCount<this.numPlayers)return;if(this.activePlayers.size===1){this.gameOver=true;console.log(`Game Over: P${[...this.activePlayers][0]} wins!`);}else if(this.activePlayers.size===0){this.gameOver=true;console.log("Game Over: Draw!");}}
 
             // --- Animation Loop & Resize ---
-            animate() { this.animationFrameId = requestAnimationFrame(this.animate.bind(this)); if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera); }
-            onWindowResize() { console.log("Window resize detected."); this.updateGridAndCameraScale(); this.renderBoard(); /* Re-render needed if orb sizes changed */ }
+            animate(){this.animationFrameId=requestAnimationFrame(this.animate.bind(this));if(this.renderer&&this.scene&&this.camera)this.renderer.render(this.scene,this.camera);}
+            onWindowResize(){console.log("Window resize detected.");this.updateGridAndCameraScale();this.renderBoard();}
 
             // --- Cleanup ---
-            cleanup() {
-                console.log("Cleaning up game resources..."); if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId); this.animationFrameId = null;
-                this.dom.canvas.removeEventListener('pointerdown', this.boundOnCanvasInteraction); this.dom.canvas.removeEventListener('contextmenu', (e) => e.preventDefault()); // Might need reference if complex
-                if (this.audioContext && this.audioContext.state !== 'closed') { this.audioContext.close().then(() => console.log("AudioContext closed.")).catch(e=>console.error("Err closing AudioContext:",e)); } this.audioContext = null; this.soundEnabled = false;
-                if (this.scene) { if (this.gridLineMaterial) this.gridLineMaterial.dispose(); while(this.scene.children.length > 0){ const object = this.scene.children[0]; this.scene.remove(object); this.disposeObject(object); } }
-                if (this.renderer) { this.renderer.dispose(); this.renderer.domElement = null; }
-                this.scene = null; this.camera = null; this.renderer = null; this.raycaster = null; this.mouse = null; this.gridGroup = null; this.gridLineMaterial = null; this.gridPlaneMesh = null; this.orbGroups = {}; this.board = []; this.activePlayers.clear(); this.ambientLight = null; this.directionalLight = null;
-                console.log("Cleanup complete.");
-            }
+            cleanup() { /* ... (Cleanup logic remains the same) ... */ console.log("Cleaning up game resources...");if(this.animationFrameId)cancelAnimationFrame(this.animationFrameId);this.animationFrameId=null;this.dom.canvas.removeEventListener('pointerdown',this.boundOnCanvasInteraction);this.dom.canvas.removeEventListener('contextmenu',(e)=>e.preventDefault());if(this.audioContext&&this.audioContext.state!=='closed'){this.audioContext.close().then(()=>console.log("AudioContext closed.")).catch(e=>console.error("Err closing AudioContext:",e));}this.audioContext=null;this.soundEnabled=false;if(this.scene){if(this.gridLineMaterial)this.gridLineMaterial.dispose();while(this.scene.children.length>0){const o=this.scene.children[0];this.scene.remove(o);this.disposeObject(o);}}if(this.renderer){this.renderer.dispose();this.renderer.domElement=null;}this.scene=null;this.camera=null;this.renderer=null;this.raycaster=null;this.mouse=null;this.gridGroup=null;this.gridLineMaterial=null;this.gridPlaneMesh=null;this.orbGroups={};this.board=[];this.activePlayers.clear();this.ambientLight=null;this.directionalLight=null;console.log("Cleanup complete.");}
+            disposeObject(o){if(!o)return;if(o.children&&o.children.length>0){[...o.children].forEach(c=>{this.disposeObject(c);if(o.remove)o.remove(c);});}if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m&&m.dispose());else o.material.dispose();}if(o.texture)o.texture.dispose();}
 
-            disposeObject(obj) {
-                if (!obj) return;
-                if (obj.children && obj.children.length > 0) { [...obj.children].forEach(child => { this.disposeObject(child); if(obj.remove) obj.remove(child); }); }
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose()); else obj.material.dispose(); }
-                if (obj.texture) obj.texture.dispose(); // Basic texture disposal if needed
-                // Do NOT remove obj from its parent here, parent should do that before calling disposeObject on child
-            }
         } // End ChainReactionGame Class
 
         // --- Instantiate ---
