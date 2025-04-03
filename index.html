@@ -51,6 +51,8 @@
         <!-- Setup Screen (visible initially) -->
         <div id="setup-screen" class="ui-panel">
             <h2>Game Setup</h2>
+            <!-- Mute Button (Now in settings) -->
+            <button id="mute-button" title="Toggle Sound">🔊</button>
             <div class="setup-row">
                 <label for="player-count">Players:</label>
                 <select id="player-count">
@@ -76,8 +78,6 @@
         <!-- Canvas Container (Always visible) -->
         <div id="canvas-container"> <canvas id="game-canvas"></canvas> </div>
 
-        <!-- Mute Button (Shown during gameplay and game over) -->
-        <button id="mute-button" title="Toggle Sound">🔊</button>
     </div>
 
     <script type="module">
@@ -185,7 +185,7 @@
             showSetupScreen() {
                 this.dom.setupScreen.style.display = 'flex';
                 this.dom.gameUi.style.display = 'none'; // Hide game over UI
-                this.dom.muteButton.style.display = 'none'; // Hide mute button
+                this.dom.muteButton.style.display = 'flex'; // Show mute button in settings
                 if (this.dom.restartButton) this.dom.restartButton.classList.add('hidden');
                 if (this.dom.messageArea) this.dom.messageArea.textContent = '';
             }
@@ -213,7 +213,7 @@
                 console.log(`Starting game: ${this.numPlayers}p, Grid ${sizeKey} (${this.rows}x${this.cols})`);
                 this.dom.setupScreen.style.display = 'none'; // Hide setup
                 this.dom.gameUi.style.display = 'none'; // << HIDE game UI panel during play
-                this.dom.muteButton.style.display = 'flex'; // << SHOW mute button
+                this.dom.muteButton.style.display = 'none'; // Hide mute button
                 this.updateMuteButtonVisuals();
                 this.initializeGameInternals();
             }
