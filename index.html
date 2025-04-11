@@ -338,10 +338,21 @@
                     const criticalMass = this.getCriticalMass(r, c); const scaleFactor = (cellState.count === criticalMass - 1) ? 1.15 : 1.0;
                     const radius = this.effectiveCellSize * ORB_RADIUS_FACTOR * scaleFactor; const orbGeometry = new THREE.SphereGeometry(radius, ORB_DETAIL.segments, ORB_DETAIL.rings);
                     const cellOrbGroup = new THREE.Group(); cellOrbGroup.position.copy(cellCenter); this.orbGroups[cellKey] = cellOrbGroup; this.gridGroup.add(cellOrbGroup);
-                    const offset = this.effectiveCellSize * 0.18 * scaleFactor; const positions = [];
+                    const offset = this.effectiveCellSize * 0.12 * scaleFactor; // Reduced offset for more overlap
+                    const positions = [];
                     if (cellState.count === 1) positions.push(new THREE.Vector3(0, 0, radius*0.5));
-                    else if (cellState.count === 2) { positions.push(new THREE.Vector3(-offset, 0, radius*0.4)); positions.push(new THREE.Vector3(offset, 0, radius*0.6)); }
-                    else { const a=Math.PI*2/3; positions.push(new THREE.Vector3(0, offset, radius*0.5)); positions.push(new THREE.Vector3(offset*Math.sin(a), offset*Math.cos(a), radius*0.4)); positions.push(new THREE.Vector3(offset*Math.sin(a*2), offset*Math.cos(a*2), radius*0.6)); }
+                    else if (cellState.count === 2) { 
+                        positions.push(new THREE.Vector3(-offset/2, 0, radius*0.4)); 
+                        positions.push(new THREE.Vector3(offset/2, 0, radius*0.6)); 
+                    }
+                    else { 
+                        // Tighter triangle formation for 3 orbs
+                        const a = Math.PI*2/3;
+                        const triangleOffset = offset * 0.8; // Slightly tighter triangle
+                        positions.push(new THREE.Vector3(0, triangleOffset*0.8, radius*0.5));
+                        positions.push(new THREE.Vector3(triangleOffset*Math.sin(a), triangleOffset*Math.cos(a), radius*0.4));
+                        positions.push(new THREE.Vector3(triangleOffset*Math.sin(a*2), triangleOffset*Math.cos(a*2), radius*0.6));
+                    }
                     for (let i = 0; i < Math.min(cellState.count, 3); i++) { const orbMesh = new THREE.Mesh(orbGeometry, material); orbMesh.position.copy(positions[i]); orbMesh.name = `Orb_${r}-${c}_${i}`; cellOrbGroup.add(orbMesh); }
                     orbGeometry.dispose(); // Dispose geometry after creating meshes
                     // material is shared, dispose when cleaning up scene, not per cell
