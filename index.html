@@ -103,7 +103,7 @@
         const GRID_GAP_FACTOR = 0.2; // Gap between cells as percentage of cell size
         const MOBILE_BREAKPOINT = 768; // Define what counts as a mobile device
         const BASE_CELL_SIZE = 10;
-        const ORB_RADIUS_FACTOR = 0.15;
+        const ORB_RADIUS_FACTOR = 0.22; // Increased base size for orbs
         const ORB_DETAIL = { segments: 12, rings: 10 };
         const PROJECTILE_RADIUS_FACTOR = 0.12;
         const PROJECTILE_DETAIL = { segments: 10, rings: 8 };
@@ -339,10 +339,19 @@
                 if (cellState.count > 0 && cellState.owner !== null) {
                     const playerIndex = cellState.owner - 1; if (playerIndex < 0 || playerIndex >= this.playerColors.length) return;
                     const color = this.playerColors[playerIndex]; const material = new THREE.MeshLambertMaterial({ color: color, emissive: color, emissiveIntensity: 0.4 });
-                    const criticalMass = this.getCriticalMass(r, c); const scaleFactor = (cellState.count === criticalMass - 1) ? 1.15 : 1.0;
+                    const criticalMass = this.getCriticalMass(r, c);
+                    let scaleFactor = 1.0;
+                    if (cellState.count === 1) {
+                        scaleFactor = 1.2; // Bigger single orbs
+                    } else if (cellState.count === criticalMass - 1) {
+                        scaleFactor = 1.15; // Slightly bigger when about to explode
+                    } else if (cellState.count === 2) {
+                        scaleFactor = 1.1; // Medium size for two orbs
+                    }
                     const radius = this.effectiveCellSize * ORB_RADIUS_FACTOR * scaleFactor; const orbGeometry = new THREE.SphereGeometry(radius, ORB_DETAIL.segments, ORB_DETAIL.rings);
                     const cellOrbGroup = new THREE.Group(); cellOrbGroup.position.copy(cellCenter); this.orbGroups[cellKey] = cellOrbGroup; this.gridGroup.add(cellOrbGroup);
-                    const offset = this.effectiveCellSize * 0.12 * scaleFactor; // Reduced offset for more overlap
+                    const baseOffset = this.effectiveCellSize * 0.15; // Increased base offset
+                    const offset = baseOffset * (cellState.count === 2 ? 0.9 : 0.8); // More overlap for 3 orbs
                     const positions = [];
                     if (cellState.count === 1) positions.push(new THREE.Vector3(0, 0, radius*0.5));
                     else if (cellState.count === 2) { 
