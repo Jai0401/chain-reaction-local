@@ -135,6 +135,7 @@
             boundStartGame = this.startGame.bind(this);
             boundResetGame = this.resetGame.bind(this);
             boundToggleMute = this.toggleMute.bind(this);
+            clock = null;
 
             constructor() {
                 if (!this.cacheDomElements()) { console.error("Essential DOM elements missing!"); return; }
@@ -142,6 +143,9 @@
                 this.setDefaultGridSize();
                 this.showSetupScreen(); // Initially show setup
                 this.setupEventListeners();
+                
+                // Initialize animation clock
+                this.clock = new THREE.Clock();
                 
                 // Check if device is mobile-sized
                 this.checkAndShowFullscreenOption();
@@ -353,9 +357,32 @@
                         positions.push(new THREE.Vector3(triangleOffset*Math.sin(a), triangleOffset*Math.cos(a), radius*0.4));
                         positions.push(new THREE.Vector3(triangleOffset*Math.sin(a*2), triangleOffset*Math.cos(a*2), radius*0.6));
                     }
-                    for (let i = 0; i < Math.min(cellState.count, 3); i++) { const orbMesh = new THREE.Mesh(orbGeometry, material); orbMesh.position.copy(positions[i]); orbMesh.name = `Orb_${r}-${c}_${i}`; cellOrbGroup.add(orbMesh); }
+                    
+                    // Calculate animation speed based on proximity to critical mass
+                    const stabilityRatio = cellState.count / criticalMass;
+                    let animationSpeed;
+                    if (stabilityRatio >= 0.99) { // About to explode
+                        animationSpeed = 3.0; // Fastest
+                    } else if (stabilityRatio >= 0.66) { // Getting unstable
+                        animationSpeed = 2.0; // Medium
+                    } else { // Stable
+                        animationSpeed = 1.0; // Slowest
+                    }
+                    
+                    // Store animation data with the orb group
+                    cellOrbGroup.userData = {
+                        basePositions: positions.map(p => p.clone()),
+                        animationSpeed: animationSpeed,
+                        orbCount: cellState.count
+                    };
+
+                    for (let i = 0; i < Math.min(cellState.count, 3); i++) { 
+                        const orbMesh = new THREE.Mesh(orbGeometry, material); 
+                        orbMesh.position.copy(positions[i]); 
+                        orbMesh.name = `Orb_${r}-${c}_${i}`; 
+                        cellOrbGroup.add(orbMesh); 
+                    }
                     orbGeometry.dispose(); // Dispose geometry after creating meshes
-                    // material is shared, dispose when cleaning up scene, not per cell
                 }
             }
 
@@ -634,7 +661,47 @@
                 // UI update showing game over state is handled in updateUI called by placeOrb
             }
 
-            animate() { this.animationFrameId = requestAnimationFrame(this.animate.bind(this)); if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera); }
+            animate() {
+                this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+                if (this.renderer && this.scene && this.camera) {
+                    const deltaTime = this.clock.getDelta();
+                    this.updateOrbAnimations(deltaTime);
+                    this.renderer.render(this.scene, this.camera);
+                }
+            }
+
+            updateOrbAnimations(deltaTime) {
+                if (!this.gridGroup) return;
+                const time = this.clock.getElapsedTime();
+                
+                // Update each orb group's animation
+                Object.values(this.orbGroups).forEach(group => {
+                    if (!group.userData?.basePositions) return;
+                    
+                    const { basePositions, animationSpeed, orbCount } = group.userData;
+                    const orbs = group.children;
+                    
+                    // Orbital rotation
+                    group.rotation.z = time * 0.5 * animationSpeed;
+                    
+                    // Individual orb animations
+                    for (let i = 0; i < Math.min(orbCount, orbs.length); i++) {
+                        const orb = orbs[i];
+                        const basePos = basePositions[i];
+                        
+                        // Vibration effect
+                        const vibrationAmplitude = 0.02 * animationSpeed;
+                        const vibrationFrequency = 5 * animationSpeed;
+                        const xOffset = Math.sin(time * vibrationFrequency + i * Math.PI * 2/3) * vibrationAmplitude;
+                        const yOffset = Math.cos(time * vibrationFrequency + i * Math.PI * 2/3) * vibrationAmplitude;
+                        
+                        orb.position.x = basePos.x + xOffset;
+                        orb.position.y = basePos.y + yOffset;
+                        orb.position.z = basePos.z + Math.sin(time * 3 + i * Math.PI/2) * 0.01 * animationSpeed;
+                    }
+                });
+            }
+
             onWindowResize() {
                 // Handle window resizing for the game viewport and camera
                 if (!this.renderer || !this.camera) return;
