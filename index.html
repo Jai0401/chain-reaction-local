@@ -350,8 +350,8 @@
                     }
                     const radius = this.effectiveCellSize * ORB_RADIUS_FACTOR * scaleFactor; const orbGeometry = new THREE.SphereGeometry(radius, ORB_DETAIL.segments, ORB_DETAIL.rings);
                     const cellOrbGroup = new THREE.Group(); cellOrbGroup.position.copy(cellCenter); this.orbGroups[cellKey] = cellOrbGroup; this.gridGroup.add(cellOrbGroup);
-                    const baseOffset = this.effectiveCellSize * 0.15; // Increased base offset
-                    const offset = baseOffset * (cellState.count === 2 ? 0.9 : 0.8); // More overlap for 3 orbs
+                    const baseOffset = this.effectiveCellSize * 0.2; // Increased base offset for more spacing
+                    const offset = baseOffset * (cellState.count === 2 ? 0.95 : 0.9); // Increased spacing between orbs
                     const positions = [];
                     if (cellState.count === 1) positions.push(new THREE.Vector3(0, 0, radius*0.5));
                     else if (cellState.count === 2) { 
@@ -359,10 +359,10 @@
                         positions.push(new THREE.Vector3(offset/2, 0, radius*0.6)); 
                     }
                     else { 
-                        // Tighter triangle formation for 3 orbs
+                        // More spaced out triangle formation for 3 orbs
                         const a = Math.PI*2/3;
-                        const triangleOffset = offset * 0.8; // Slightly tighter triangle
-                        positions.push(new THREE.Vector3(0, triangleOffset*0.8, radius*0.5));
+                        const triangleOffset = offset * 0.9; // Increased triangle spacing
+                        positions.push(new THREE.Vector3(0, triangleOffset*0.9, radius*0.5));
                         positions.push(new THREE.Vector3(triangleOffset*Math.sin(a), triangleOffset*Math.cos(a), radius*0.4));
                         positions.push(new THREE.Vector3(triangleOffset*Math.sin(a*2), triangleOffset*Math.cos(a*2), radius*0.6));
                     }
